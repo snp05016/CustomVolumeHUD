@@ -1,74 +1,52 @@
-# CustomVolumeHUD (macOS)
+# CustomVolumeHUD (macOS) - Brooklyn Nine-Nine Edition 🚨
 
-A lightweight, customizable macOS volume Heads-Up Display (HUD) written in **Swift** and **SwiftUI**.
+A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn Nine-Nine**, built natively with **Swift**, **AppKit**, and **SwiftUI**.
 
-It intercepts system media keys to **suppress the default macOS volume bezel**, queries/updates hardware volume via **CoreAudio**, and renders a sleek, floating glassmorphic overlay.
+![70% Volume HUD](hud_preview_70.png)
+
+---
+
+## The Concept
+
+- **Jake Peralta** (left) excitedly rapid-fires:
+  ```
+  COOL COOL COOL COOL COOL COOL COOL COOL COOL COOL
+  ```
+  where each active `COOL` represents 10% volume.
+- **Captain Raymond Holt** (right) stands motionless and unimpressed as Jake gets progressively more excited.
+- **Dynamic Directional Flow**: Increasing volume reveals words sequentially from Jake toward Holt with micro-delays and pixel bounces. Decreasing volume rapidly dissolves words right-to-left.
+- **Special States & Reactions**:
+  - **Mute**: All COOLs vanish immediately. After 300 ms, Holt displays a subtle *"Silence."* or *"Finally."* reaction.
+  - **100% Volume**: Jake celebrates and Holt occasionally reacts with a raised eyebrow or *"Peralta."* speech bubble. Rare Easter eggs (*"NO DOUBT!"*, *"BINGPOT!"*) can trigger.
 
 ---
 
 ## Features
 
 - 🎛️ **Native HUD Suppression**: Uses `CGEvent.tapCreate` to intercept volume keys (`F11`, `F12`, `Mute`) and suppress Apple's default bezel.
-- 🔊 **CoreAudio Hardware Sync**: Adjusts virtual main volume and responds to changes from Control Center, Touch Bar, or external audio devices.
-- 🎨 **Modern Glassmorphic UI**: SwiftUI pill view with `.ultraThinMaterial`, SF Symbols (`speaker.wave.3.fill`, `speaker.slash.fill`), smooth spring animations, and exact percentage readouts.
-- 🎚️ **Fine-Tuning Support**: Supports <kbd>⇧ Shift</kbd> + <kbd>⌥ Option</kbd> + Volume keys for fine-grained 1/4 step increments (1/64th step).
-- 🪟 **Floating & Non-Activating**: Runs as an `NSPanel` that stays on top of all windows (including full-screen apps and multiple spaces) without stealing keyboard focus or causing clicks to miss.
-- 🧼 **Accessory Agent (No Dock Icon)**: Lives silently in the menu bar with options to test the HUD or quit.
-
----
-
-## Architecture
-
-```
-Hardware Volume Keys (F11 / F12 / Mute)
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ MediaKeyInterceptor             │
-│  - CGEvent.tapCreate            │ ──(Drops event: Suppresses Default HUD)
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ VolumeManager (CoreAudio)       │ ◄── (Also listens to Control Center)
-│  - AudioObjectSetPropertyData   │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ HUDWindowController (NSPanel)   │
-│  - Floating, non-activating     │
-│  - Auto-dismiss timer (1.5s)    │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ VolumeHUDView (SwiftUI)         │
-│  - Glassmorphic Capsule         │
-│  - Spring-animated progress bar │
-└─────────────────────────────────┘
-```
+- 🔊 **CoreAudio Hardware Sync**: Authoritative system output volume synchronization with live device change listeners.
+- 👾 **100% Nearest-Neighbor Pixel Art**: Custom `PixelArtSpriteView` ensures sprites remain sharp with zero bilinear blur on Retina displays.
+- 📟 **Custom 5×7 Bitmap Font**: Built-in retro police computer typography engine (`PixelFont.swift`).
+- ⚡ **Zero-Latency Catch-up**: Rapid keypresses collapse the animation queue (< 140 ms) so the HUD never lags behind actual volume changes.
+- 🪟 **Floating & Non-Activating**: Runs as an `NSPanel` at `.statusBar` level across all spaces (including full-screen apps and games) with click-through enabled.
+- 🧼 **Accessory Agent (No Dock Icon)**: Operates silently in the background with a menu bar status item.
 
 ---
 
 ## Quick Start
 
 ### 1. Run in Development Mode
-You can build and run the app directly from your terminal using the Swift Package Manager:
+Build and run directly using Swift Package Manager:
 
 ```bash
 swift run
 ```
 
-### 2. Build as a Standalone Application (`.app`)
-Run the provided build script to compile in Release mode and create a self-contained `.app` bundle:
+### 2. Build as a Standalone macOS App (`.app`)
+Compile in Release mode and package into a signed `.app` bundle:
 
 ```bash
 ./scripts/build_app.sh
-```
-
-This generates `CustomVolumeHUD.app`. You can launch it with:
-```bash
 open CustomVolumeHUD.app
 ```
 
@@ -76,20 +54,20 @@ open CustomVolumeHUD.app
 
 ## Permissions (Accessibility)
 
-To suppress the default macOS volume bezel, macOS requires **Accessibility Permissions**:
-1. When you first run the app, macOS will prompt you to grant Accessibility access.
-2. Go to **System Settings > Privacy & Security > Accessibility**.
-3. Toggle the switch ON for **CustomVolumeHUD** (or your terminal emulator if running with `swift run`).
-
-> **Note:** If permissions are not granted, the app automatically falls back to **CoreAudio listener mode**. The custom HUD will still display, but the default macOS bezel will appear alongside it until permission is granted.
+To suppress the default macOS volume bezel:
+1. Launch the application.
+2. When prompted, open **System Settings > Privacy & Security > Accessibility**.
+3. Enable the toggle for **CustomVolumeHUD** (or your terminal emulator if running via `swift run`).
 
 ---
 
-## Customizing the HUD
+## Testing
 
-- **Position**: Modify `reposition(panel:)` in `Sources/CustomVolumeHUD/HUDWindowController.swift` to place the HUD under the MacBook notch, in the top right corner, or centered at the bottom.
-- **Visuals & Colors**: Edit `Sources/CustomVolumeHUD/VolumeHUDView.swift` to change capsule width, corner radius, gradients, or typography.
-- **Dismiss Duration**: Adjust the timeout in `HUDWindowController.swift` (default: 1.5 seconds).
+Run the automated test suite (26 unit and snapshot tests):
+
+```bash
+swift test
+```
 
 ---
 
@@ -97,16 +75,21 @@ To suppress the default macOS volume bezel, macOS requires **Accessibility Permi
 
 ```
 CustomVolumeHUD/
-├── Package.swift                    # SPM manifest
+├── Package.swift
 ├── scripts/
-│   └── build_app.sh                 # App bundler and code sign script
+│   └── build_app.sh                  # Release bundler and code-signer
 ├── Sources/
-│   └── CustomVolumeHUD/
-│       ├── main.swift               # App entry point & Status Item
-│       ├── VolumeManager.swift       # CoreAudio volume read/write & listener
-│       ├── MediaKeyInterceptor.swift # Low-level CGEventTap key interceptor
+│   ├── CustomVolumeHUD/              # Executable target entry point
+│   │   └── main.swift
+│   └── CustomVolumeHUDLib/           # Core library
 │       ├── HUDWindowController.swift # Floating NSPanel controller
-│       └── VolumeHUDView.swift      # SwiftUI HUD view
-├── README.md
-└── .gitignore
+│       ├── MediaKeyInterceptor.swift # CGEventTap volume key interceptor
+│       ├── PixelArtImageView.swift   # Nearest-neighbor pixel sprite renderer
+│       ├── PixelFont.swift           # 5x7 bitmap retro font engine
+│       ├── VolumeHUDView.swift       # SwiftUI terminal HUD view
+│       ├── VolumeHUDViewModel.swift  # Interruptible animation state coordinator
+│       ├── VolumeManager.swift       # CoreAudio volume driver & listener
+│       └── Resources/                # Pixel art sprites (Jake, Holt)
+└── Tests/
+    └── CustomVolumeHUDTests/         # 26 automated unit & snapshot tests
 ```
