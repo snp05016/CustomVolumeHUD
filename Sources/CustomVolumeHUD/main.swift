@@ -6,7 +6,6 @@ import CustomVolumeHUDLib
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hudController: HUDWindowController!
     private var mediaKeyInterceptor: MediaKeyInterceptor!
-    private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Run as an accessory app (no Dock icon)
@@ -15,7 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hudController = HUDWindowController()
         mediaKeyInterceptor = MediaKeyInterceptor()
 
-        setupStatusMenu()
         setupVolumeHandlers()
         requestAccessibilityAndStart()
 
@@ -23,39 +21,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("💡 Use your volume keys or Control Center to see the custom HUD.")
     }
 
-    private func setupStatusMenu() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: "Custom Volume HUD")
-        }
-
-        let menu = NSMenu()
-        let infoItem = NSMenuItem(title: "Custom Volume HUD", action: nil, keyEquivalent: "")
-        infoItem.isEnabled = false
-        menu.addItem(infoItem)
-        menu.addItem(NSMenuItem.separator())
-
-        let testItem = NSMenuItem(title: "Show Test HUD", action: #selector(testHUD), keyEquivalent: "t")
-        testItem.target = self
-        menu.addItem(testItem)
-
-        menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-
-        statusItem?.menu = menu
-    }
-
     private func setupVolumeHandlers() {
         // Intercepted media keys handler (suppressed default HUD)
-        mediaKeyInterceptor.onVolumeAdjusted = { [weak self] volume, isMuted in
-            self?.hudController.show(volume: volume, isMuted: isMuted)
+        mediaKeyInterceptor.onVolumeAdjusted = { [weak self] volume, isMuted, action in
+            self?.hudController.show(volume: volume, isMuted: isMuted, inputAction: action)
         }
 
         // CoreAudio system volume listener (catches Control Center / slider adjustments)
         VolumeManager.shared.onVolumeChanged = { [weak self] volume, isMuted in
-            self?.hudController.show(volume: volume, isMuted: isMuted)
+            self?.hudController.show(volume: volume, isMuted: isMuted, inputAction: .externalChange)
         }
     }
 
@@ -93,15 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func testHUD() {
-        let vol = VolumeManager.shared.volume
-        let muted = VolumeManager.shared.isMuted
-        hudController.show(volume: vol, isMuted: muted)
-    }
-
-    @objc private func quitApp() {
-        NSApplication.shared.terminate(nil)
-    }
 }
 
 @main

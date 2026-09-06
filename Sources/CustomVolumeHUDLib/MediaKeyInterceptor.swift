@@ -11,7 +11,7 @@ public final class MediaKeyInterceptor: @unchecked Sendable {
     private static let NX_KEYTYPE_SOUND_DOWN: Int32 = 1
     private static let NX_KEYTYPE_MUTE: Int32 = 7
 
-    public var onVolumeAdjusted: (@MainActor (Float, Bool) -> Void)?
+    public var onVolumeAdjusted: (@MainActor (Float, Bool, HUDInputAction) -> Void)?
 
     public init() {}
 
@@ -98,17 +98,17 @@ public final class MediaKeyInterceptor: @unchecked Sendable {
             switch keyCode {
             case Self.NX_KEYTYPE_SOUND_UP:
                 VolumeManager.shared.stepUp(step: step)
-                notifyChange()
+                notifyChange(action: .volumeUp)
 
             case Self.NX_KEYTYPE_SOUND_DOWN:
                 VolumeManager.shared.stepDown(step: step)
-                notifyChange()
+                notifyChange(action: .volumeDown)
 
             case Self.NX_KEYTYPE_MUTE:
                 // Only toggle mute on initial key down; do not oscillate on key repeat hold
                 if !isRepeat {
                     VolumeManager.shared.toggleMute()
-                    notifyChange()
+                    notifyChange(action: .muteToggle)
                 }
 
             default:
@@ -120,12 +120,12 @@ public final class MediaKeyInterceptor: @unchecked Sendable {
         return nil
     }
 
-    private func notifyChange() {
+    private func notifyChange(action: HUDInputAction) {
         let vol = VolumeManager.shared.volume
         let muted = VolumeManager.shared.isMuted
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
-                self?.onVolumeAdjusted?(vol, muted)
+                self?.onVolumeAdjusted?(vol, muted, action)
             }
         }
     }

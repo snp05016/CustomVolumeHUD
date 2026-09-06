@@ -8,14 +8,24 @@ public final class HUDWindowController {
     private var dismissWorkItem: DispatchWorkItem?
     private var viewModel: VolumeHUDViewModel?
     private var hostingView: NSHostingView<VolumeHUDView>?
+    private let sceneModeProvider: () -> HUDSceneMode
 
-    public static let defaultWidth: CGFloat = 540
-    public static let defaultHeight: CGFloat = 108
+    public nonisolated static let defaultWidth: CGFloat = 540
+    public nonisolated static let defaultHeight: CGFloat = 108
+    public nonisolated static let originalHoldDuration: TimeInterval = 0.85
+    public nonisolated static let holdDuration: TimeInterval = originalHoldDuration + 2.0
+    public nonisolated static let fadeDuration: TimeInterval = 0.22
 
     public let hudWidth: CGFloat = HUDWindowController.defaultWidth
     public let hudHeight: CGFloat = HUDWindowController.defaultHeight
 
-    public init() {
+    public init(sceneModeProvider: (() -> HUDSceneMode)? = nil) {
+        if let sceneModeProvider {
+            self.sceneModeProvider = sceneModeProvider
+        } else {
+            let selector = HUDSceneSelector()
+            self.sceneModeProvider = { selector.next() }
+        }
         setupPanel()
     }
 
@@ -61,15 +71,32 @@ public final class HUDWindowController {
         set { viewModel?.intensityMode = newValue }
     }
 
+    public var activeSceneMode: HUDSceneMode? {
+        viewModel?.session?.sceneMode
+    }
+
+    public var isSessionActive: Bool {
+        viewModel?.session != nil
+    }
+
     /// Shows or updates the HUD with current volume and mute state.
-    public func show(volume: Float, isMuted: Bool) {
+    public func show(
+        volume: Float,
+        isMuted: Bool,
+        inputAction: HUDInputAction = .externalChange
+    ) {
         if self.panel == nil || self.viewModel == nil {
             self.setupPanel()
         }
         guard let panel = self.panel, let viewModel = self.viewModel else { return }
 
-        // Update state dynamically without recreating view hierarchy
-        viewModel.update(volume: volume, isMuted: isMuted)
+        // Scene randomization happens exactly once, at the real session boundary.
+        if viewModel.session == nil {
+            viewModel.beginSession(sceneMode: sceneModeProvider())
+        }
+
+        // Update state dynamically without recreating the view hierarchy.
+        viewModel.update(volume: volume, isMuted: isMuted, inputAction: inputAction)
 
         // Reposition at bottom center of active display with cursor
         self.reposition(panel: panel)
@@ -95,11 +122,11 @@ public final class HUDWindowController {
             panel.animator().alphaValue = 1.0
         }
 
-        // Hold after last interaction (850 ms), then continuous fade-out (220 ms)
+        // Hold for the original 850 ms plus exactly two seconds; fade duration is unchanged.
         let workItem = DispatchWorkItem { [weak self, weak panel] in
             guard let self = self, let panel = panel, self.dismissGeneration == generation else { return }
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.22
+                context.duration = Self.fadeDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 panel.animator().alphaValue = 0.0
             } completionHandler: { [weak self, weak panel] in
@@ -107,12 +134,13 @@ public final class HUDWindowController {
                     guard let self = self, let panel = panel, self.dismissGeneration == generation else { return }
                     panel.orderOut(nil)
                     panel.alphaValue = 1.0
+                    self.viewModel?.endSession()
                 }
             }
         }
 
         self.dismissWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.holdDuration, execute: workItem)
     }
 
     /// Immediately hides the HUD panel and cancels pending auto-dismiss.
@@ -122,6 +150,7 @@ public final class HUDWindowController {
         self.dismissWorkItem = nil
         panel?.orderOut(nil)
         panel?.alphaValue = 1.0
+        viewModel?.endSession()
     }
 
     private func reposition(panel: NSPanel) {

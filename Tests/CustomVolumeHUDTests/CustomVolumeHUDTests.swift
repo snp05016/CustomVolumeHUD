@@ -571,4 +571,208 @@ final class CustomVolumeHUDTests: XCTestCase {
         XCTAssertLessThan(IntensityMode.professional.jakeMotionMultiplier, IntensityMode.noice.jakeMotionMultiplier)
         XCTAssertGreaterThan(IntensityMode.fullPeralta.jakeMotionMultiplier, IntensityMode.noice.jakeMotionMultiplier)
     }
+
+    // MARK: - Dual Scene Sessions
+
+    @MainActor
+    func testSceneModeLocksForEntireSession() {
+        let vm = VolumeHUDViewModel(volume: 0.3, isMuted: false)
+        vm.beginSession(sceneMode: .runToTerry)
+        let firstSessionID = vm.session?.id
+
+        vm.update(volume: 0.8, isMuted: false, inputAction: .volumeUp)
+        vm.beginSession(sceneMode: .coolHolt)
+
+        XCTAssertEqual(vm.currentSceneMode, .runToTerry)
+        XCTAssertEqual(vm.session?.id, firstSessionID)
+
+        vm.endSession()
+        vm.beginSession(sceneMode: .coolHolt)
+        XCTAssertEqual(vm.currentSceneMode, .coolHolt)
+        XCTAssertNotEqual(vm.session?.id, firstSessionID)
+        vm.endSession()
+    }
+
+    func testSceneSelectorGuaranteesOneHoltAndOneTerryPerPair() {
+        let selector = HUDSceneSelector()
+        let expectedModes = Set(HUDSceneMode.allCases)
+
+        for _ in 0..<50 {
+            let pair = Set([selector.next(), selector.next()])
+            XCTAssertEqual(pair, expectedModes)
+        }
+    }
+
+    func testSceneSelectorSupportsDeterministicOrdering() {
+        let selector = HUDSceneSelector(shuffler: { Array($0.reversed()) })
+        XCTAssertEqual(selector.next(), .runToTerry)
+        XCTAssertEqual(selector.next(), .coolHolt)
+        XCTAssertEqual(selector.next(), .runToTerry)
+        XCTAssertEqual(selector.next(), .coolHolt)
+    }
+
+    @MainActor
+    func testWindowControllerRerollsOnlyAfterTrueSessionEnd() {
+        var modes: [HUDSceneMode] = [.runToTerry, .coolHolt]
+        let controller = HUDWindowController(sceneModeProvider: { modes.removeFirst() })
+
+        controller.show(volume: 0.4, isMuted: false, inputAction: .volumeUp)
+        XCTAssertEqual(controller.activeSceneMode, .runToTerry)
+
+        controller.show(volume: 0.5, isMuted: false, inputAction: .volumeUp)
+        XCTAssertEqual(controller.activeSceneMode, .runToTerry)
+
+        controller.hide()
+        XCTAssertFalse(controller.isSessionActive)
+
+        controller.show(volume: 0.6, isMuted: false, inputAction: .volumeUp)
+        XCTAssertEqual(controller.activeSceneMode, .coolHolt)
+        controller.hide()
+    }
+
+    @MainActor
+    func testWindowControllerAutomaticallyEndsSessionAfterHoldAndFade() {
+        let controller = HUDWindowController(sceneModeProvider: { .runToTerry })
+        controller.show(volume: 0.5, isMuted: false, inputAction: .volumeUp)
+        XCTAssertTrue(controller.isSessionActive)
+
+        let expectation = XCTestExpectation(description: "Fade completion releases scene session")
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + HUDWindowController.holdDuration + HUDWindowController.fadeDuration + 0.20
+        ) {
+            XCTAssertFalse(controller.isSessionActive)
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 4.0)
+    }
+
+    func testHoldDurationAddsExactlyTwoSecondsWithoutChangingFade() {
+        XCTAssertEqual(
+            HUDWindowController.holdDuration,
+            HUDWindowController.originalHoldDuration + 2.0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(HUDWindowController.fadeDuration, 0.22, accuracy: 0.000_001)
+    }
+
+    // MARK: - Jake Runs to Terry
+
+    @MainActor
+    func testRunSceneMovesContinuouslyTowardVolume() {
+        let vm = VolumeHUDViewModel(volume: 0.2, isMuted: false)
+        vm.beginSession(sceneMode: .runToTerry)
+        vm.update(volume: 0.9, isMuted: false, inputAction: .volumeUp)
+
+        let initialProgress = vm.runToTerryState.visualProgress
+        for _ in 0..<12 {
+            vm.tick(explicitDeltaTime: 0.01)
+        }
+
+        XCTAssertGreaterThan(vm.runToTerryState.visualProgress, initialProgress)
+        XCTAssertLessThanOrEqual(vm.runToTerryState.visualProgress, 0.9)
+        XCTAssertTrue(vm.runToTerryState.isMoving)
+        XCTAssertGreaterThan(vm.runToTerryState.velocity, 0)
+        vm.endSession()
+    }
+
+    @MainActor
+    func testRunSceneCatchAndSeamlessRetreat() {
+        let vm = VolumeHUDViewModel(volume: 0.9, isMuted: false)
+        vm.beginSession(sceneMode: .runToTerry)
+        vm.update(volume: 1.0, isMuted: false, inputAction: .volumeUp)
+
+        for _ in 0..<32 {
+            vm.tick(explicitDeltaTime: 0.01)
+        }
+        XCTAssertTrue(vm.runToTerryState.isCaught)
+        XCTAssertEqual(vm.runToTerryState.visualProgress, 1.0, accuracy: 0.000_1)
+
+        vm.update(volume: 0.75, isMuted: false, inputAction: .volumeDown)
+        XCTAssertFalse(vm.runToTerryState.isCaught)
+        let releasedProgress = vm.runToTerryState.visualProgress
+        vm.tick(explicitDeltaTime: 0.02)
+        XCTAssertLessThan(vm.runToTerryState.visualProgress, releasedProgress)
+        XCTAssertEqual(vm.runToTerryState.direction, -1)
+        vm.endSession()
+    }
+
+    @MainActor
+    func testRunSceneRapidDirectionChangesDoNotResetPositionOrSession() {
+        let vm = VolumeHUDViewModel(volume: 0.3, isMuted: false)
+        vm.beginSession(sceneMode: .runToTerry)
+        let sessionID = vm.session?.id
+
+        vm.update(volume: 0.8, isMuted: false, inputAction: .volumeUp)
+        for _ in 0..<5 { vm.tick(explicitDeltaTime: 0.01) }
+        let afterIncrease = vm.runToTerryState.visualProgress
+
+        vm.update(volume: 0.4, isMuted: false, inputAction: .volumeDown)
+        vm.tick(explicitDeltaTime: 0.02)
+        let afterDecrease = vm.runToTerryState.visualProgress
+        XCTAssertLessThan(afterDecrease, afterIncrease)
+        XCTAssertEqual(vm.runToTerryState.direction, -1)
+
+        vm.update(volume: 0.7, isMuted: false, inputAction: .volumeUp)
+        vm.tick(explicitDeltaTime: 0.02)
+        XCTAssertGreaterThan(vm.runToTerryState.visualProgress, afterDecrease)
+        XCTAssertEqual(vm.runToTerryState.direction, 1)
+        XCTAssertEqual(vm.session?.id, sessionID)
+        XCTAssertEqual(vm.currentSceneMode, .runToTerry)
+        vm.endSession()
+    }
+
+    @MainActor
+    func testRunSceneMuteAndHighVolumeRestoreConvergeQuickly() {
+        let vm = VolumeHUDViewModel(volume: 0.8, isMuted: false)
+        vm.beginSession(sceneMode: .runToTerry)
+
+        vm.update(volume: 0.8, isMuted: true, inputAction: .muteToggle)
+        for _ in 0..<20 { vm.tick(explicitDeltaTime: 0.01) }
+        XCTAssertLessThan(vm.runToTerryState.visualProgress, 0.04)
+        XCTAssertFalse(vm.runToTerryState.isCaught)
+
+        vm.update(volume: 0.8, isMuted: false, inputAction: .muteToggle)
+        for _ in 0..<30 { vm.tick(explicitDeltaTime: 0.01) }
+        XCTAssertEqual(vm.runToTerryState.visualProgress, 0.8, accuracy: 0.01)
+        vm.endSession()
+    }
+
+    @MainActor
+    func testBoundaryPressesProduceModeSpecificFeedback() {
+        let cool = VolumeHUDViewModel(volume: 0, isMuted: false)
+        cool.beginSession(sceneMode: .coolHolt)
+        cool.update(volume: 0, isMuted: false, inputAction: .volumeDown)
+        XCTAssertNotNil(cool.jakeSpeech)
+        XCTAssertGreaterThan(cool.hudPulseScale, 1)
+        cool.endSession()
+
+        let terry = VolumeHUDViewModel(volume: 1, isMuted: false)
+        terry.beginSession(sceneMode: .runToTerry)
+        terry.update(volume: 1, isMuted: false, inputAction: .volumeUp)
+        XCTAssertTrue(terry.runToTerryState.isCaught)
+        XCTAssertGreaterThan(terry.runToTerryState.catchScale, 1)
+        terry.update(volume: 1, isMuted: false, inputAction: .volumeUp)
+        XCTAssertNotNil(terry.runToTerryState.terrySpeech)
+        terry.endSession()
+    }
+
+    @MainActor
+    func testTerryAssetsExistAndRenderSnapshots() {
+        for name in ["terry_standing", "jake_run_1", "jake_run_2", "terry_catch"] {
+            XCTAssertNotNil(PixelAssetLoader.shared.image(named: name), "\(name).png must be loadable")
+        }
+
+        let midRun = VolumeHUDViewModel(volume: 0.65, isMuted: false)
+        midRun.beginSession(sceneMode: .runToTerry)
+        midRun.update(volume: 0.65, isMuted: false, animated: false, inputAction: .externalChange)
+        renderViewToPNG(view: VolumeHUDView(viewModel: midRun), filename: "hud_preview_terry_65.png")
+        midRun.endSession()
+
+        let caught = VolumeHUDViewModel(volume: 1.0, isMuted: false)
+        caught.beginSession(sceneMode: .runToTerry)
+        caught.update(volume: 1.0, isMuted: false, animated: false, inputAction: .externalChange)
+        renderViewToPNG(view: VolumeHUDView(viewModel: caught), filename: "hud_preview_terry_100.png")
+        caught.endSession()
+    }
 }

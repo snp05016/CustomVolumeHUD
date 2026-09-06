@@ -9,6 +9,8 @@ public final class EasterEggController {
         case peralta = "Peralta."
         case hotDamn = "HOT DAMN!"
         case cheddar = "CHEDDAR"
+        case nineNine = "NINE-NINE!"
+        case terryLove = "TERRY LOVES THIS."
     }
 
     public private(set) var sessionChaosLevel: Double = 0.0
@@ -20,7 +22,9 @@ public final class EasterEggController {
         .noDoubt: 15.0,
         .peralta: 8.0,
         .hotDamn: 30.0,
-        .cheddar: 45.0
+        .cheddar: 45.0,
+        .nineNine: 18.0,
+        .terryLove: 24.0
     ]
 
     // Base probabilities
@@ -29,7 +33,9 @@ public final class EasterEggController {
         .noDoubt: 0.08,
         .peralta: 0.35, // When patience is 0
         .hotDamn: 0.02,
-        .cheddar: 0.04
+        .cheddar: 0.04,
+        .nineNine: 0.07,
+        .terryLove: 0.045
     ]
 
     public init() {}

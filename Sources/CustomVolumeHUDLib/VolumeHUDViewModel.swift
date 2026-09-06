@@ -6,12 +6,15 @@ import QuartzCore
 @MainActor
 public final class VolumeHUDViewModel: ObservableObject {
     public nonisolated static let maxSlots = 10
-    public nonisolated static let maxOverflowSlots = 4
+    public nonisolated static let maxOverflowSlots = 5
 
     // Primary State
     @Published public private(set) var volume: Float = 0.0
     @Published public private(set) var isMuted: Bool = false
     @Published public private(set) var displayedCount: Int = 0
+    @Published public private(set) var session: HUDSession?
+    @Published public private(set) var runToTerryState = RunToTerryRenderState()
+    @Published public private(set) var hudPulseScale: CGFloat = 1.0
 
     // Physical COOL Slot Arrays (10 slots)
     @Published public private(set) var slotBounces: [CGFloat] = Array(repeating: 0, count: maxSlots)
@@ -47,6 +50,7 @@ public final class VolumeHUDViewModel: ObservableObject {
     // Subsystems
     public let velocityTracker = InputVelocityTracker()
     public let easterEggController = EasterEggController()
+    private let runToTerryEngine = RunToTerrySceneEngine()
 
     // Internal Loop & Pacing State
     private var activeAnimationId: UUID = UUID()
@@ -70,8 +74,8 @@ public final class VolumeHUDViewModel: ObservableObject {
         }
         self.jakeExcitement = Double(initialSlots) / 10.0 * 0.3
         self.holtPatience = 1.0
-
-        startDisplayLoop()
+        runToTerryEngine.reset(volume: self.volume, isMuted: isMuted)
+        self.runToTerryState = runToTerryEngine.state
     }
 
     deinit {
@@ -90,16 +94,90 @@ public final class VolumeHUDViewModel: ObservableObject {
         return Self.calculateSlotCount(for: volume)
     }
 
-    // MARK: - Continuous Display Loop (60Hz / 120Hz ProMotion friendly)
+    public var currentSceneMode: HUDSceneMode {
+        session?.sceneMode ?? .coolHolt
+    }
+
+    // MARK: - HUD Session Lifetime
+
+    /// Locks a scene choice until `endSession()` is called after the panel reaches zero opacity.
+    public func beginSession(sceneMode: HUDSceneMode? = nil) {
+        let now = CACurrentMediaTime()
+        if var activeSession = session {
+            activeSession.lastInputTimestamp = now
+            session = activeSession
+            startDisplayLoop()
+            return
+        }
+
+        let selectedMode = sceneMode ?? HUDSceneMode.random()
+        session = HUDSession(
+            sceneMode: selectedMode,
+            startTimestamp: now,
+            lastInputTimestamp: now
+        )
+        velocityTracker.reset()
+        easterEggController.reset()
+        inputIntensity = 0
+        comboCount = 0
+        hudPulseScale = 1
+        synchronizeCoolStateToCurrentVolume()
+        runToTerryEngine.reset(volume: volume, isMuted: isMuted)
+        runToTerryState = runToTerryEngine.state
+        startDisplayLoop()
+    }
+
+    public func endSession() {
+        cancelPendingAnimations()
+        overflowResetTimer?.cancel()
+        overflowResetTimer = nil
+        stopDisplayLoop()
+        session = nil
+        hudPulseScale = 1
+        jakeSpeech = nil
+        holtSpeech = nil
+        overflowCoolCount = 0
+        cheddarActive = false
+    }
+
+    private func noteSessionInput() {
+        guard var activeSession = session else { return }
+        activeSession.lastInputTimestamp = CACurrentMediaTime()
+        session = activeSession
+    }
+
+    private func synchronizeCoolStateToCurrentVolume() {
+        let count = isMuted ? 0 : Self.calculateSlotCount(for: volume)
+        displayedCount = count
+        for index in 0..<Self.maxSlots {
+            slotOpacities[index] = index < count ? 1 : 0
+            slotBounces[index] = 0
+            slotOffsetsX[index] = 0
+            slotScales[index] = index < count ? 1 : 0.85
+        }
+        overflowCoolCount = 0
+        holtEyebrowRaised = false
+        jakeSpeech = nil
+        holtSpeech = nil
+    }
+
+    // MARK: - Continuous Display Loop (120Hz-capable, elapsed-time driven)
 
     private func startDisplayLoop() {
         guard displayTimer == nil else { return }
         lastTickTime = CACurrentMediaTime()
-        displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
                 self?.tick()
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        displayTimer = timer
+    }
+
+    private func stopDisplayLoop() {
+        displayTimer?.invalidate()
+        displayTimer = nil
     }
 
     public func tick(explicitDeltaTime: TimeInterval? = nil) {
@@ -114,6 +192,22 @@ public final class VolumeHUDViewModel: ObservableObject {
 
         // 2. Update Session Chaos
         easterEggController.update(deltaTime: dt)
+
+        if currentSceneMode == .runToTerry {
+            runToTerryEngine.tick(deltaTime: dt, inputIntensity: inputIntensity)
+            let nextState = runToTerryEngine.state
+            if nextState != runToTerryState {
+                runToTerryState = nextState
+            }
+        }
+
+        if hudPulseScale != 1 {
+            let factor = CGFloat(1.0 - exp(-18.0 * dt))
+            hudPulseScale += (1 - hudPulseScale) * factor
+            if abs(hudPulseScale - 1) < 0.001 {
+                hudPulseScale = 1
+            }
+        }
 
         // 3. Smooth Jake Excitement Interpolation
         let baseVolumeExcitement = Double(targetSlotCount) / 10.0
@@ -178,27 +272,58 @@ public final class VolumeHUDViewModel: ObservableObject {
 
     // MARK: - Authoritative Volume Update
 
-    public func update(volume: Float, isMuted: Bool, animated: Bool = true) {
+    public func update(
+        volume: Float,
+        isMuted: Bool,
+        animated: Bool = true,
+        inputAction: HUDInputAction = .inferred
+    ) {
         let newVolume = max(0.0, min(1.0, volume))
+        let oldVolume = self.volume
         let wasMuted = self.isMuted
         let oldDisplayed = self.displayedCount
-        let oldTarget = self.targetSlotCount
-
         self.volume = newVolume
         self.isMuted = isMuted
 
         let target = self.targetSlotCount
-        let direction = target > oldTarget ? 1 : (target < oldTarget ? -1 : 0)
+        let inferredDirection = newVolume > oldVolume ? 1 : (newVolume < oldVolume ? -1 : 0)
+        let direction = inputAction.explicitDirection ?? inferredDirection
+        let isRepeatedMaxPress = newVolume >= 0.999 && oldVolume >= 0.999 &&
+            (inputAction == .volumeUp || inputAction == .inferred)
+        let isRepeatedMinPress = newVolume <= 0.001 && oldVolume <= 0.001 &&
+            (inputAction == .volumeDown || inputAction == .inferred)
 
         // Record velocity event
         velocityTracker.recordEvent(direction: direction)
         self.inputIntensity = velocityTracker.inputIntensity
         self.comboCount = velocityTracker.comboCount
+        noteSessionInput()
+
+        if isRepeatedMaxPress || isRepeatedMinPress {
+            hudPulseScale = 1.024
+        }
 
         // Cancel previous in-flight discrete tasks
         cancelPendingAnimations()
         let animId = UUID()
         self.activeAnimationId = animId
+
+        runToTerryEngine.updateTarget(
+            volume: newVolume,
+            isMuted: isMuted,
+            inputAction: inputAction,
+            isRepeatedBoundaryPress: isRepeatedMaxPress || isRepeatedMinPress,
+            intensityMode: intensityMode,
+            easterEggController: easterEggController
+        )
+
+        if currentSceneMode == .runToTerry {
+            if !animated {
+                runToTerryEngine.snapToTarget()
+            }
+            runToTerryState = runToTerryEngine.state
+            return
+        }
 
         if !animated {
             applyImmediateState(targetCount: target)
@@ -218,30 +343,53 @@ public final class VolumeHUDViewModel: ObservableObject {
         }
 
         // CASE 3: 100% Volume Repeat / Overflow Interaction
-        if target == 10 && oldDisplayed == 10 && direction >= 0 {
+        if target == 10 && oldDisplayed == 10 && isRepeatedMaxPress {
             handleMaxVolumeOverflow()
             return
         }
 
-        // CASE 4: Volume Increase (Directional reveal from Jake toward Holt)
+        // CASE 4: Volume Down while already at zero still gets a character reaction.
+        if target == 0 && oldDisplayed == 0 && !isMuted && isRepeatedMinPress {
+            handleMinVolumeBoundary()
+            return
+        }
+
+        // CASE 5: Volume Increase (Directional reveal from Jake toward Holt)
         if target > oldDisplayed {
             handleVolumeIncrease(from: oldDisplayed, to: target, animId: animId)
             return
         }
 
-        // CASE 5: Volume Decrease (Right-to-left dissolve with phosphor flicker)
+        // CASE 6: Volume Decrease (Right-to-left dissolve with phosphor flicker)
         if target < oldDisplayed {
             handleVolumeDecrease(from: oldDisplayed, to: target, animId: animId)
             return
         }
 
-        // CASE 6: Target unchanged
+        // CASE 7: Target unchanged
         if target == 10 {
             triggerJakeCelebration(atMax: true)
         }
     }
 
     // MARK: - State Handlers
+
+    private func handleMinVolumeBoundary() {
+        easterEggController.registerChaosEvent(amount: 0.05)
+        jakeSpeech = comboCount >= 3 ? "STILL ZERO!" : "NO MORE COOLS!"
+        holtSpeech = comboCount >= 4 ? "THAT IS ZERO, PERALTA." : nil
+        holtEyebrowRaised = comboCount >= 2
+        jakeBounceY = 2
+        hudPulseScale = 1.024
+
+        let animationId = activeAnimationId
+        let settle = DispatchWorkItem { [weak self] in
+            guard let self = self, self.activeAnimationId == animationId else { return }
+            self.jakeBounceY = 0
+        }
+        pendingWorkItems.append(settle)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: settle)
+    }
 
     private func handleMuteInterruption(animId: UUID) {
         // Immediately clear all slots and freeze in-flight motion

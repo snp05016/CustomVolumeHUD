@@ -8,16 +8,22 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 
 ## The Concept
 
-- **Jake Peralta** (left) excitedly rapid-fires:
+- Every new HUD session locks one of two complete pixel scenes until the pill has fully faded away. A shuffled two-scene bag guarantees one Holt and one Terry scene per pair, with randomized order.
+- **COOL Control** keeps Jake Peralta on the left, excitedly rapid-firing:
   ```
   COOL COOL COOL COOL COOL COOL COOL COOL COOL COOL
   ```
   where each active `COOL` represents 10% volume.
-- **Captain Raymond Holt** (right) stands motionless and unimpressed as Jake gets progressively more excited.
+- **Captain Raymond Holt** stands motionless and unimpressed as Jake gets progressively more excited.
+- **Jake in Pursuit** turns volume into physical distance: Jake runs toward Terry as volume rises, retreats as it falls, and lands in Terry's arms at 100%.
+- Jake returns to his standing sprite whenever he reaches the requested volume, while his feet remain anchored to the same lane used by the running frames.
+- A segmented blue-to-gold volume pill gives both scenes a precise conventional readout without replacing the character animation.
 - **Dynamic Directional Flow**: Increasing volume reveals words sequentially from Jake toward Holt with micro-delays and pixel bounces. Decreasing volume rapidly dissolves words right-to-left.
 - **Special States & Reactions**:
   - **Mute**: All COOLs vanish immediately. After 300 ms, Holt displays a subtle *"Silence."* or *"Finally."* reaction.
   - **100% Volume**: Jake celebrates and Holt occasionally reacts with a raised eyebrow or *"Peralta."* speech bubble. Rare Easter eggs (*"NO DOUBT!"*, *"BINGPOT!"*) can trigger.
+  - **Boundary presses**: pressing up again at 100% or down again at 0% still pops the pill and triggers mode-specific character feedback.
+  - **Extended visibility**: the original 850 ms idle hold is extended by exactly two seconds; the 220 ms fade remains unchanged.
 
 ---
 
@@ -28,8 +34,11 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 - 👾 **100% Nearest-Neighbor Pixel Art**: Custom `PixelArtSpriteView` ensures sprites remain sharp with zero bilinear blur on Retina displays.
 - 📟 **Custom 5×7 Bitmap Font**: Built-in retro police computer typography engine (`PixelFont.swift`).
 - ⚡ **Zero-Latency Catch-up**: Rapid keypresses collapse the animation queue (< 140 ms) so the HUD never lags behind actual volume changes.
+- 🏃 **Continuous Terry-Mode Physics**: Jake's position converges without overshoot at up to 120 updates per second, while sprite frames intentionally retain arcade-style stepping.
+- 📶 **Shared Pixel Volume Pill**: A retargetable 10-segment pill fills smoothly with the actual system volume and switches to a red empty state when muted.
+- 🎬 **Session-Locked Balanced Scenes**: Scene selection happens once when the HUD appears and cannot change during input, hold, fade, or fade interruption. Each randomized pair contains one Holt and one Terry scene.
 - 🪟 **Floating & Non-Activating**: Runs as an `NSPanel` at `.statusBar` level across all spaces (including full-screen apps and games) with click-through enabled.
-- 🧼 **Accessory Agent (No Dock Icon)**: Operates silently in the background with a menu bar status item.
+- 🧼 **Invisible Background Agent**: Operates without a Dock icon or menu bar item; only the volume HUD appears.
 
 ---
 
@@ -63,7 +72,7 @@ To suppress the default macOS volume bezel:
 
 ## Testing
 
-Run the automated test suite (26 unit and snapshot tests):
+Run the automated test suite (46 unit, session, physics, and snapshot tests):
 
 ```bash
 swift test
@@ -86,10 +95,13 @@ CustomVolumeHUD/
 │       ├── MediaKeyInterceptor.swift # CGEventTap volume key interceptor
 │       ├── PixelArtImageView.swift   # Nearest-neighbor pixel sprite renderer
 │       ├── PixelFont.swift           # 5x7 bitmap retro font engine
-│       ├── VolumeHUDView.swift       # SwiftUI terminal HUD view
+│       ├── VolumeHUDView.swift       # Stable terminal HUD shell
 │       ├── VolumeHUDViewModel.swift  # Interruptible animation state coordinator
+│       ├── CoolHoltSceneView.swift   # COOL/Holt scene renderer
+│       ├── RunToTerryScene.swift     # Continuous run/catch physics
+│       ├── RunToTerrySceneView.swift # Terry scene renderer and sprite anchors
 │       ├── VolumeManager.swift       # CoreAudio volume driver & listener
-│       └── Resources/                # Pixel art sprites (Jake, Holt)
+│       └── Resources/                # Transparent pixel art sprites
 └── Tests/
-    └── CustomVolumeHUDTests/         # 26 automated unit & snapshot tests
+    └── CustomVolumeHUDTests/         # 46 automated unit, session, physics, and snapshot tests
 ```
