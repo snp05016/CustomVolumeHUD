@@ -19,17 +19,17 @@ public struct PixelSpeechBubble: View {
             }
 
             // Main bubble box
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 PixelWordView(
                     text: text,
-                    pixelSize: 1.5,
+                    pixelSize: 1.2,
                     color: Color(red: 1.0, green: 0.95, blue: 0.7),
                     shadowColor: Color.black,
-                    letterSpacing: 1.5
+                    letterSpacing: 1.2
                 )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -76,6 +76,13 @@ public struct PixelSpeechBubble: View {
 public struct VolumeHUDView: View {
     @ObservedObject public var viewModel: VolumeHUDViewModel
 
+    public static let hudWidth: CGFloat = 540
+    public static let hudHeight: CGFloat = 108
+    public static let slotWidth: CGFloat = 34
+    public static let slotHeight: CGFloat = 22
+    public static let slotPixelSize: CGFloat = 1.25
+    public static let slotLetterSpacing: CGFloat = 1.1
+
     public init(viewModel: VolumeHUDViewModel) {
         self.viewModel = viewModel
     }
@@ -98,15 +105,15 @@ public struct VolumeHUDView: View {
             // Base terminal bezel & scanlines
             terminalBackground
 
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 // Top terminal header
                 terminalHeader
 
                 // Main character + COOL slots row
-                HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 6) {
                     // Left: Jake Peralta (~16% of width)
                     jakeSection
-                        .frame(width: 80, height: 96, alignment: .bottom)
+                        .frame(width: 64, height: 76, alignment: .bottom)
 
                     // Center: 10 "COOL" volume slots (~68% of width)
                     slotsSection
@@ -114,18 +121,18 @@ public struct VolumeHUDView: View {
 
                     // Right: Captain Raymond Holt (~16% of width)
                     holtSection
-                        .frame(width: 80, height: 96, alignment: .bottom)
+                        .frame(width: 64, height: 76, alignment: .bottom)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
             }
 
             // Dialogue layer floating neatly in the center area above COOL slots
             dialogueLayer
         }
-        .frame(width: 680, height: 136)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: Color.black.opacity(0.65), radius: 24, x: 0, y: 12)
+        .frame(width: Self.hudWidth, height: Self.hudHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: Color.black.opacity(0.65), radius: 18, x: 0, y: 8)
     }
 
     // MARK: - Subviews
@@ -134,19 +141,19 @@ public struct VolumeHUDView: View {
         ZStack {
             if let speech = viewModel.jakeSpeech {
                 PixelSpeechBubble(text: speech, pointsLeft: true)
-                    .position(x: 160, y: 58)
+                    .position(x: 130, y: 46)
                     .transition(.scale.combined(with: .opacity))
                     .zIndex(20)
             }
 
             if let speech = viewModel.holtSpeech {
                 PixelSpeechBubble(text: speech, pointsLeft: false)
-                    .position(x: 520, y: 58)
+                    .position(x: 410, y: 46)
                     .transition(.scale.combined(with: .opacity))
                     .zIndex(20)
             }
         }
-        .frame(width: 680, height: 136)
+        .frame(width: Self.hudWidth, height: Self.hudHeight)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: viewModel.jakeSpeech)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: viewModel.holtSpeech)
     }
@@ -154,7 +161,7 @@ public struct VolumeHUDView: View {
     private var terminalBackground: some View {
         ZStack {
             // Dark translucent acrylic backing
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color(red: 0.05, green: 0.07, blue: 0.11).opacity(0.94))
 
             // Subtle scanlines overlay
@@ -168,7 +175,7 @@ public struct VolumeHUDView: View {
             }
 
             // Retro police terminal double border
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
                         colors: [
@@ -183,26 +190,26 @@ public struct VolumeHUDView: View {
                 )
 
             // Inner thin bevel
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 0.75)
                 .padding(1)
         }
     }
 
     private var terminalHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             // Left: Precinct Badge & Identifier
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: "shield.fill")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundColor(Color(red: 0.95, green: 0.75, blue: 0.25))
 
                 PixelWordView(
                     text: "NYPD // 99TH PRECINCT",
-                    pixelSize: 1.0,
+                    pixelSize: 0.85,
                     color: Color(red: 0.95, green: 0.75, blue: 0.25),
                     shadowColor: Color.black,
-                    letterSpacing: 1.0
+                    letterSpacing: 0.85
                 )
             }
 
@@ -211,38 +218,38 @@ public struct VolumeHUDView: View {
             // Center: Monitor tag
             PixelWordView(
                 text: "AUDIO LEVEL MONITOR",
-                pixelSize: 1.0,
+                pixelSize: 0.85,
                 color: Color.white.opacity(0.55),
                 shadowColor: Color.black,
-                letterSpacing: 1.0
+                letterSpacing: 0.85
             )
 
             Spacer()
 
             // Right: Level Readout
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 if viewModel.isMuted {
                     PixelWordView(
                         text: "[ MUTED ]",
-                        pixelSize: 1.0,
+                        pixelSize: 0.85,
                         color: Color(red: 1.0, green: 0.35, blue: 0.35),
                         shadowColor: Color.black,
-                        letterSpacing: 1.0
+                        letterSpacing: 0.85
                     )
                 } else {
                     let pct = Int(round(viewModel.volume * 100))
                     PixelWordView(
                         text: "LEVEL: \(pct)%",
-                        pixelSize: 1.0,
+                        pixelSize: 0.85,
                         color: Color(red: 0.4, green: 0.9, blue: 1.0),
                         shadowColor: Color.black,
-                        letterSpacing: 1.0
+                        letterSpacing: 0.85
                     )
                 }
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 9)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
     }
 
     private var jakeSection: some View {
@@ -250,13 +257,13 @@ public struct VolumeHUDView: View {
             // Jake Sprite facing right toward Holt
             if let img = jakeImage {
                 PixelArtSpriteView(image: img, isFlippedHorizontal: false)
-                    .frame(width: 54, height: 92)
+                    .frame(width: 44, height: 72)
                     .offset(y: viewModel.jakeBounceY)
                     .animation(.interactiveSpring(response: 0.15, dampingFraction: 0.6), value: viewModel.jakeBounceY)
             } else {
                 Rectangle()
                     .fill(Color.blue.opacity(0.3))
-                    .frame(width: 54, height: 92)
+                    .frame(width: 44, height: 72)
             }
         }
     }
@@ -266,22 +273,22 @@ public struct VolumeHUDView: View {
             // Captain Holt Sprite facing left toward Jake
             if let img = holtImage {
                 PixelArtSpriteView(image: img, isFlippedHorizontal: false)
-                    .frame(width: 44, height: 96)
+                    .frame(width: 36, height: 76)
             } else {
                 Rectangle()
                     .fill(Color.purple.opacity(0.3))
-                    .frame(width: 44, height: 96)
+                    .frame(width: 36, height: 76)
             }
         }
     }
 
     private var slotsSection: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             ForEach(0..<VolumeHUDViewModel.maxSlots, id: \.self) { index in
                 volumeSlot(at: index)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -291,46 +298,46 @@ public struct VolumeHUDView: View {
         let slotOpacity = viewModel.slotOpacities[index]
         let effectiveOpacity = slotOpacity > 0.0 ? slotOpacity : (isActive ? 1.0 : 0.0)
 
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             // The "COOL" slot container
             ZStack {
                 // Ghosted Inactive Base box (always visible underneath)
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(Color(white: 0.08).opacity(0.6))
 
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(Color(white: 0.2).opacity(0.35), lineWidth: 1.0)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(Color(white: 0.2).opacity(0.35), lineWidth: 0.8)
 
                 PixelWordView(
                     text: "COOL",
-                    pixelSize: 1.6,
+                    pixelSize: Self.slotPixelSize,
                     color: Color(red: 0.22, green: 0.28, blue: 0.38).opacity(0.40),
                     shadowColor: nil,
-                    letterSpacing: 1.4
+                    letterSpacing: Self.slotLetterSpacing
                 )
 
                 // Active luminous layer with CRT phosphor dissolve & flicker opacity
                 if isActive || slotOpacity > 0.0 {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(Color(red: 0.12, green: 0.16, blue: 0.24).opacity(0.9))
 
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .strokeBorder(Color(red: 0.95, green: 0.78, blue: 0.25).opacity(0.75), lineWidth: 1.0)
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .strokeBorder(Color(red: 0.95, green: 0.78, blue: 0.25).opacity(0.75), lineWidth: 0.8)
 
                         PixelWordView(
                             text: "COOL",
-                            pixelSize: 1.6,
+                            pixelSize: Self.slotPixelSize,
                             color: Color(red: 1.0, green: 0.90, blue: 0.35),
                             shadowColor: Color.black.opacity(0.8),
-                            letterSpacing: 1.4
+                            letterSpacing: Self.slotLetterSpacing
                         )
                         .offset(y: bounceY)
                     }
                     .opacity(effectiveOpacity)
                 }
             }
-            .frame(width: 42, height: 28)
+            .frame(width: Self.slotWidth, height: Self.slotHeight)
 
             // Bottom LED indicator bar
             ZStack {
@@ -343,7 +350,7 @@ public struct VolumeHUDView: View {
                         .opacity(effectiveOpacity)
                 }
             }
-            .frame(width: 38, height: 2.5)
+            .frame(width: 30, height: 2)
             .cornerRadius(1)
         }
     }

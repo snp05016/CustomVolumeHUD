@@ -219,10 +219,10 @@ final class CustomVolumeHUDTests: XCTestCase {
     @MainActor
     func testHUDControllerDimensions() {
         let controller = HUDWindowController()
-        XCTAssertGreaterThanOrEqual(controller.hudWidth, 600)
-        XCTAssertLessThanOrEqual(controller.hudWidth, 750)
-        XCTAssertGreaterThanOrEqual(controller.hudHeight, 110)
-        XCTAssertLessThanOrEqual(controller.hudHeight, 150)
+        XCTAssertGreaterThanOrEqual(controller.hudWidth, 480)
+        XCTAssertLessThanOrEqual(controller.hudWidth, 600)
+        XCTAssertGreaterThanOrEqual(controller.hudHeight, 95)
+        XCTAssertLessThanOrEqual(controller.hudHeight, 120)
     }
 
     @MainActor
@@ -247,7 +247,7 @@ final class CustomVolumeHUDTests: XCTestCase {
     @MainActor
     private func renderViewToPNG<V: View>(view: V, filename: String) {
         let hostingView = NSHostingView(rootView: view)
-        hostingView.frame = NSRect(x: 0, y: 0, width: 680, height: 136)
+        hostingView.frame = NSRect(x: 0, y: 0, width: VolumeHUDView.hudWidth, height: VolumeHUDView.hudHeight)
         hostingView.layoutSubtreeIfNeeded()
 
         guard let rep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else { return }
@@ -380,16 +380,16 @@ final class CustomVolumeHUDTests: XCTestCase {
 
     func testSlotTextDimensionsFitWithinSlotBoxWithoutClipping() {
         let text = "COOL"
-        let pixelSize: CGFloat = 1.6
-        let letterSpacing: CGFloat = 1.4
+        let pixelSize: CGFloat = VolumeHUDView.slotPixelSize
+        let letterSpacing: CGFloat = VolumeHUDView.slotLetterSpacing
         let charCount = CGFloat(text.count)
         let glyphWidth = 5.0 * pixelSize
         let baseWidth = (charCount * glyphWidth) + ((charCount - 1) * letterSpacing)
         let totalWidth = baseWidth + 1.0 // with shadow
         let totalHeight = (7.0 * pixelSize) + 1.0
 
-        let boxWidth: CGFloat = 42.0
-        let boxHeight: CGFloat = 28.0
+        let boxWidth: CGFloat = VolumeHUDView.slotWidth
+        let boxHeight: CGFloat = VolumeHUDView.slotHeight
 
         XCTAssertLessThan(totalWidth, boxWidth, "COOL text width must be strictly less than slot box width")
         XCTAssertLessThan(totalHeight, boxHeight, "COOL text height must be strictly less than slot box height")

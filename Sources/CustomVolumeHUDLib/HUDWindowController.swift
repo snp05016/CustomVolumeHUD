@@ -9,8 +9,11 @@ public final class HUDWindowController {
     private var viewModel: VolumeHUDViewModel?
     private var hostingView: NSHostingView<VolumeHUDView>?
 
-    public let hudWidth: CGFloat = 680
-    public let hudHeight: CGFloat = 136
+    public static let defaultWidth: CGFloat = 540
+    public static let defaultHeight: CGFloat = 108
+
+    public let hudWidth: CGFloat = HUDWindowController.defaultWidth
+    public let hudHeight: CGFloat = HUDWindowController.defaultHeight
 
     public init() {
         setupPanel()
