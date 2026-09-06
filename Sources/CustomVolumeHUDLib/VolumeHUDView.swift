@@ -175,6 +175,11 @@ public struct VolumeHUDView: View {
 
             Spacer()
 
+            if let bluetoothDevice = viewModel.bluetoothOutputDevice {
+                BluetoothOutputBadge(device: bluetoothDevice)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+
             PixelWordView(
                 text: viewModel.isMuted ? "[ MUTED ]" : "LEVEL: \(Int(round(viewModel.volume * 100)))%",
                 pixelSize: 0.85,
@@ -187,6 +192,7 @@ public struct VolumeHUDView: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 6)
+        .animation(.easeOut(duration: 0.16), value: viewModel.bluetoothOutputDevice)
     }
 
     private var terminalBackground: some View {

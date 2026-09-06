@@ -4,6 +4,8 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 
 ![70% Volume HUD](hud_preview_70.png)
 
+![Bluetooth AirPods HUD](hud_preview_airpods_70.png)
+
 ---
 
 ## The Concept
@@ -18,6 +20,7 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 - **Jake in Pursuit** turns volume into physical distance: Jake runs toward Terry as volume rises, retreats as it falls, and lands in Terry's arms at 100%.
 - Jake returns to his standing sprite whenever he reaches the requested volume, while his feet remain anchored to the same lane used by the running frames.
 - A segmented blue-to-gold volume pill gives both scenes a precise conventional readout without replacing the character animation.
+- When the active CoreAudio output uses Bluetooth, the header shows its device name with a dedicated pixel-art earbuds or over-ear headphones sprite.
 - **Dynamic Directional Flow**: Increasing volume reveals words sequentially from Jake toward Holt with micro-delays and pixel bounces. Decreasing volume rapidly dissolves words right-to-left.
 - **Special States & Reactions**:
   - **Mute**: All COOLs vanish immediately. After 300 ms, Holt displays a subtle *"Silence."* or *"Finally."* reaction.
@@ -36,6 +39,7 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 - ⚡ **Zero-Latency Catch-up**: Rapid keypresses collapse the animation queue (< 140 ms) so the HUD never lags behind actual volume changes.
 - 🏃 **Continuous Terry-Mode Physics**: Jake's position converges without overshoot at up to 120 updates per second, while sprite frames intentionally retain arcade-style stepping.
 - 📶 **Shared Pixel Volume Pill**: A retargetable 10-segment pill fills smoothly with the actual system volume and switches to a red empty state when muted.
+- 🎧 **Bluetooth Device Identity**: Detects the active output's CoreAudio transport and displays an AirPods/earbuds or over-ear headphones pixel badge; built-in and wired outputs stay uncluttered.
 - 🎬 **Session-Locked Balanced Scenes**: Scene selection happens once when the HUD appears and cannot change during input, hold, fade, or fade interruption. Each randomized pair contains one Holt and one Terry scene.
 - 🪟 **Floating & Non-Activating**: Runs as an `NSPanel` at `.statusBar` level across all spaces (including full-screen apps and games) with click-through enabled.
 - 🧼 **Invisible Background Agent**: Operates without a Dock icon or menu bar item; only the volume HUD appears.
@@ -72,7 +76,7 @@ To suppress the default macOS volume bezel:
 
 ## Testing
 
-Run the automated test suite (46 unit, session, physics, and snapshot tests):
+Run the automated test suite (48 unit, session, physics, device, and snapshot tests):
 
 ```bash
 swift test
@@ -100,8 +104,10 @@ CustomVolumeHUD/
 │       ├── CoolHoltSceneView.swift   # COOL/Holt scene renderer
 │       ├── RunToTerryScene.swift     # Continuous run/catch physics
 │       ├── RunToTerrySceneView.swift # Terry scene renderer and sprite anchors
+│       ├── BluetoothOutputDevice.swift # Bluetooth output detection and sprite classification
+│       ├── BluetoothOutputBadge.swift  # Active-device pixel badge
 │       ├── VolumeManager.swift       # CoreAudio volume driver & listener
 │       └── Resources/                # Transparent pixel art sprites
 └── Tests/
-    └── CustomVolumeHUDTests/         # 46 automated unit, session, physics, and snapshot tests
+    └── CustomVolumeHUDTests/         # 48 automated unit, session, physics, device, and snapshot tests
 ```

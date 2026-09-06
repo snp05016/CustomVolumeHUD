@@ -15,6 +15,7 @@ public final class VolumeHUDViewModel: ObservableObject {
     @Published public private(set) var session: HUDSession?
     @Published public private(set) var runToTerryState = RunToTerryRenderState()
     @Published public private(set) var hudPulseScale: CGFloat = 1.0
+    @Published public private(set) var bluetoothOutputDevice: BluetoothOutputDevice?
 
     // Physical COOL Slot Arrays (10 slots)
     @Published public private(set) var slotBounces: [CGFloat] = Array(repeating: 0, count: maxSlots)
@@ -60,10 +61,16 @@ public final class VolumeHUDViewModel: ObservableObject {
     private var lastVolumeChangeTime: TimeInterval = 0
     private var overflowResetTimer: DispatchWorkItem?
 
-    public init(volume: Float = 0.0, isMuted: Bool = false, intensityMode: IntensityMode = .noice) {
+    public init(
+        volume: Float = 0.0,
+        isMuted: Bool = false,
+        intensityMode: IntensityMode = .noice,
+        bluetoothOutputDevice: BluetoothOutputDevice? = nil
+    ) {
         self.volume = max(0.0, min(1.0, volume))
         self.isMuted = isMuted
         self.intensityMode = intensityMode
+        self.bluetoothOutputDevice = bluetoothOutputDevice
 
         let initialSlots = isMuted ? 0 : Self.calculateSlotCount(for: volume)
         self.displayedCount = initialSlots
@@ -276,7 +283,8 @@ public final class VolumeHUDViewModel: ObservableObject {
         volume: Float,
         isMuted: Bool,
         animated: Bool = true,
-        inputAction: HUDInputAction = .inferred
+        inputAction: HUDInputAction = .inferred,
+        bluetoothOutputDevice: BluetoothOutputDevice?
     ) {
         let newVolume = max(0.0, min(1.0, volume))
         let oldVolume = self.volume
@@ -284,6 +292,7 @@ public final class VolumeHUDViewModel: ObservableObject {
         let oldDisplayed = self.displayedCount
         self.volume = newVolume
         self.isMuted = isMuted
+        self.bluetoothOutputDevice = bluetoothOutputDevice
 
         let target = self.targetSlotCount
         let inferredDirection = newVolume > oldVolume ? 1 : (newVolume < oldVolume ? -1 : 0)
@@ -370,6 +379,22 @@ public final class VolumeHUDViewModel: ObservableObject {
         if target == 10 {
             triggerJakeCelebration(atMax: true)
         }
+    }
+
+    /// Updates volume while preserving the last known output-device identity.
+    public func update(
+        volume: Float,
+        isMuted: Bool,
+        animated: Bool = true,
+        inputAction: HUDInputAction = .inferred
+    ) {
+        update(
+            volume: volume,
+            isMuted: isMuted,
+            animated: animated,
+            inputAction: inputAction,
+            bluetoothOutputDevice: bluetoothOutputDevice
+        )
     }
 
     // MARK: - State Handlers

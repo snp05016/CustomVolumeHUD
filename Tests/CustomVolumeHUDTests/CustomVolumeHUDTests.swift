@@ -214,6 +214,53 @@ final class CustomVolumeHUDTests: XCTestCase {
         }
     }
 
+    func testBluetoothDeviceClassificationAndAssets() {
+        let airPods = BluetoothOutputDevice(name: "Saumya's AirPods Pro")
+        XCTAssertEqual(airPods.kind, .earbuds)
+        XCTAssertEqual(airPods.displayName, "AIRPODS PRO")
+
+        let headphones = BluetoothOutputDevice(name: "WH-1000XM5")
+        XCTAssertEqual(headphones.kind, .headphones)
+        XCTAssertEqual(headphones.displayName, "WH-1000XM5")
+
+        XCTAssertNotNil(PixelAssetLoader.shared.image(named: airPods.assetName))
+        XCTAssertNotNil(PixelAssetLoader.shared.image(named: headphones.assetName))
+    }
+
+    @MainActor
+    func testBluetoothOutputUpdatesAndRendersInHUD() {
+        let airPods = BluetoothOutputDevice(name: "Saumya's AirPods Pro")
+        let vm = VolumeHUDViewModel(
+            volume: 0.7,
+            isMuted: false,
+            bluetoothOutputDevice: airPods
+        )
+        vm.beginSession(sceneMode: .coolHolt)
+        XCTAssertEqual(vm.bluetoothOutputDevice, airPods)
+
+        renderViewToPNG(
+            view: VolumeHUDView(viewModel: vm),
+            filename: "hud_preview_airpods_70.png"
+        )
+
+        let headphonesVM = VolumeHUDViewModel(
+            volume: 0.65,
+            isMuted: false,
+            bluetoothOutputDevice: BluetoothOutputDevice(name: "WH-1000XM5")
+        )
+        headphonesVM.beginSession(sceneMode: .runToTerry)
+        headphonesVM.update(volume: 0.65, isMuted: false, animated: false)
+        renderViewToPNG(
+            view: VolumeHUDView(viewModel: headphonesVM),
+            filename: "hud_preview_headphones_65.png"
+        )
+        headphonesVM.endSession()
+
+        vm.update(volume: 0.6, isMuted: false, animated: false, bluetoothOutputDevice: nil)
+        XCTAssertNil(vm.bluetoothOutputDevice)
+        vm.endSession()
+    }
+
     // MARK: - HUD Layout Dimensions & Visual Snapshot Tests
 
     @MainActor

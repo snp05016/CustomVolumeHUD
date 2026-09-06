@@ -53,7 +53,12 @@ public final class HUDWindowController {
 
         let currentVol = VolumeManager.shared.volume
         let currentMuted = VolumeManager.shared.isMuted
-        let vm = VolumeHUDViewModel(volume: currentVol, isMuted: currentMuted)
+        let currentBluetoothDevice = VolumeManager.shared.bluetoothOutputDevice
+        let vm = VolumeHUDViewModel(
+            volume: currentVol,
+            isMuted: currentMuted,
+            bluetoothOutputDevice: currentBluetoothDevice
+        )
         let hudView = VolumeHUDView(viewModel: vm)
         let host = NSHostingView(rootView: hudView)
         host.frame = NSRect(x: 0, y: 0, width: hudWidth, height: hudHeight)
@@ -85,6 +90,21 @@ public final class HUDWindowController {
         isMuted: Bool,
         inputAction: HUDInputAction = .externalChange
     ) {
+        show(
+            volume: volume,
+            isMuted: isMuted,
+            inputAction: inputAction,
+            bluetoothOutputDevice: VolumeManager.shared.bluetoothOutputDevice
+        )
+    }
+
+    /// Shows or updates the HUD with explicit active-output metadata.
+    public func show(
+        volume: Float,
+        isMuted: Bool,
+        inputAction: HUDInputAction,
+        bluetoothOutputDevice: BluetoothOutputDevice?
+    ) {
         if self.panel == nil || self.viewModel == nil {
             self.setupPanel()
         }
@@ -96,7 +116,12 @@ public final class HUDWindowController {
         }
 
         // Update state dynamically without recreating the view hierarchy.
-        viewModel.update(volume: volume, isMuted: isMuted, inputAction: inputAction)
+        viewModel.update(
+            volume: volume,
+            isMuted: isMuted,
+            inputAction: inputAction,
+            bluetoothOutputDevice: bluetoothOutputDevice
+        )
 
         // Reposition at bottom center of active display with cursor
         self.reposition(panel: panel)

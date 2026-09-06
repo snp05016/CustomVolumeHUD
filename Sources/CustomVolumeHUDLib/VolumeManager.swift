@@ -18,6 +18,53 @@ public final class VolumeManager: @unchecked Sendable {
         lastDirectAdjustmentTime
     }
 
+    /// Metadata for the active output when CoreAudio reports a Bluetooth transport.
+    public var bluetoothOutputDevice: BluetoothOutputDevice? {
+        guard currentDeviceID != 0 else { return nil }
+
+        var transportType: UInt32 = 0
+        var transportSize = UInt32(MemoryLayout<UInt32>.size)
+        var transportAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let transportStatus = AudioObjectGetPropertyData(
+            currentDeviceID,
+            &transportAddress,
+            0,
+            nil,
+            &transportSize,
+            &transportType
+        )
+        guard transportStatus == noErr,
+              transportType == kAudioDeviceTransportTypeBluetooth ||
+                transportType == kAudioDeviceTransportTypeBluetoothLE else {
+            return nil
+        }
+
+        var unmanagedName: Unmanaged<CFString>?
+        var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var nameAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let nameStatus = AudioObjectGetPropertyData(
+            currentDeviceID,
+            &nameAddress,
+            0,
+            nil,
+            &nameSize,
+            &unmanagedName
+        )
+        let name = nameStatus == noErr
+            ? unmanagedName?.takeRetainedValue() as String?
+            : nil
+
+        return BluetoothOutputDevice(name: name ?? "Bluetooth Audio")
+    }
+
     private init() {
         updateDefaultDevice()
         setupDeviceChangeListener()

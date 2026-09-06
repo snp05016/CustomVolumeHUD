@@ -24,12 +24,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupVolumeHandlers() {
         // Intercepted media keys handler (suppressed default HUD)
         mediaKeyInterceptor.onVolumeAdjusted = { [weak self] volume, isMuted, action in
-            self?.hudController.show(volume: volume, isMuted: isMuted, inputAction: action)
+            self?.hudController.show(
+                volume: volume,
+                isMuted: isMuted,
+                inputAction: action,
+                bluetoothOutputDevice: VolumeManager.shared.bluetoothOutputDevice
+            )
         }
 
         // CoreAudio system volume listener (catches Control Center / slider adjustments)
         VolumeManager.shared.onVolumeChanged = { [weak self] volume, isMuted in
-            self?.hudController.show(volume: volume, isMuted: isMuted, inputAction: .externalChange)
+            self?.hudController.show(
+                volume: volume,
+                isMuted: isMuted,
+                inputAction: .externalChange,
+                bluetoothOutputDevice: VolumeManager.shared.bluetoothOutputDevice
+            )
         }
     }
 
