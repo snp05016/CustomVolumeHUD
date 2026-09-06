@@ -2,7 +2,7 @@ import Cocoa
 
 /// Intercepts hardware media keys (Volume Up, Volume Down, Mute)
 /// using a low-level CGEventTap to suppress the native macOS volume bezel.
-final class MediaKeyInterceptor: @unchecked Sendable {
+public final class MediaKeyInterceptor: @unchecked Sendable {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
@@ -11,9 +11,9 @@ final class MediaKeyInterceptor: @unchecked Sendable {
     private static let NX_KEYTYPE_SOUND_DOWN: Int32 = 1
     private static let NX_KEYTYPE_MUTE: Int32 = 7
 
-    var onVolumeAdjusted: ((Float, Bool) -> Void)?
+    public var onVolumeAdjusted: (@MainActor (Float, Bool) -> Void)?
 
-    init() {}
+    public init() {}
 
     deinit {
         stop()
@@ -22,7 +22,7 @@ final class MediaKeyInterceptor: @unchecked Sendable {
     /// Attempts to start intercepting media keys.
     /// Returns true if the event tap was created successfully (requires Accessibility permission).
     @discardableResult
-    func start() -> Bool {
+    public func start() -> Bool {
         guard eventTap == nil else { return true }
 
         let eventMask = (1 << NSEvent.EventType.systemDefined.rawValue)
@@ -50,7 +50,7 @@ final class MediaKeyInterceptor: @unchecked Sendable {
         return true
     }
 
-    func stop() {
+    public func stop() {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
             if let source = runLoopSource {
@@ -67,7 +67,7 @@ final class MediaKeyInterceptor: @unchecked Sendable {
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
-            return Unmanaged.passRetained(event)
+            return nil
         }
 
         guard let nsEvent = NSEvent(cgEvent: event),
@@ -80,8 +80,16 @@ final class MediaKeyInterceptor: @unchecked Sendable {
         let keyCode = Int32((data1 & 0xFFFF0000) >> 16)
         let keyFlags = (data1 & 0x0000FFFF)
         let keyState = (keyFlags & 0xFF00) >> 8 // 0x0A = Key Down / Repeat, 0x0B = Key Up
+        let isRepeat = (keyFlags & 0x1) != 0
 
-        // Only handle key down / repeated hold
+        // Only handle sound keys (Volume Up, Volume Down, Mute)
+        guard keyCode == Self.NX_KEYTYPE_SOUND_UP ||
+              keyCode == Self.NX_KEYTYPE_SOUND_DOWN ||
+              keyCode == Self.NX_KEYTYPE_MUTE else {
+            return Unmanaged.passRetained(event)
+        }
+
+        // On key down / repeated hold, perform authoritative volume adjustment
         if keyState == 0x0A {
             // Check for Shift + Option for 1/4 step fine tuning (1/64th of full scale)
             let isFineTuning = event.flags.contains([.maskAlternate, .maskShift])
@@ -91,31 +99,34 @@ final class MediaKeyInterceptor: @unchecked Sendable {
             case Self.NX_KEYTYPE_SOUND_UP:
                 VolumeManager.shared.stepUp(step: step)
                 notifyChange()
-                return nil // Swallows the event: suppresses native HUD
 
             case Self.NX_KEYTYPE_SOUND_DOWN:
                 VolumeManager.shared.stepDown(step: step)
                 notifyChange()
-                return nil // Swallows the event: suppresses native HUD
 
             case Self.NX_KEYTYPE_MUTE:
-                VolumeManager.shared.toggleMute()
-                notifyChange()
-                return nil // Swallows the event: suppresses native HUD
+                // Only toggle mute on initial key down; do not oscillate on key repeat hold
+                if !isRepeat {
+                    VolumeManager.shared.toggleMute()
+                    notifyChange()
+                }
 
             default:
                 break
             }
         }
 
-        return Unmanaged.passRetained(event)
+        // Swallow BOTH key down (0x0A) and key up (0x0B) for sound keys to suppress native HUD
+        return nil
     }
 
     private func notifyChange() {
         let vol = VolumeManager.shared.volume
         let muted = VolumeManager.shared.isMuted
         DispatchQueue.main.async { [weak self] in
-            self?.onVolumeAdjusted?(vol, muted)
+            MainActor.assumeIsolated {
+                self?.onVolumeAdjusted?(vol, muted)
+            }
         }
     }
 }

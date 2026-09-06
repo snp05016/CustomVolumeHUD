@@ -10,13 +10,30 @@ let package = Package(
         .executable(
             name: "CustomVolumeHUD",
             targets: ["CustomVolumeHUD"]
+        ),
+        .library(
+            name: "CustomVolumeHUDLib",
+            targets: ["CustomVolumeHUDLib"]
         )
     ],
     targets: [
+        .target(
+            name: "CustomVolumeHUDLib",
+            dependencies: [],
+            path: "Sources/CustomVolumeHUDLib",
+            resources: [
+                .process("Resources")
+            ]
+        ),
         .executableTarget(
             name: "CustomVolumeHUD",
-            dependencies: [],
+            dependencies: ["CustomVolumeHUDLib"],
             path: "Sources/CustomVolumeHUD"
+        ),
+        .testTarget(
+            name: "CustomVolumeHUDTests",
+            dependencies: ["CustomVolumeHUDLib"],
+            path: "Tests/CustomVolumeHUDTests"
         )
     ]
 )

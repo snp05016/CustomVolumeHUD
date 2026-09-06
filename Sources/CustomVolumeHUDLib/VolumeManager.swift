@@ -1,16 +1,22 @@
 import Foundation
 import CoreAudio
 import AudioToolbox
+import QuartzCore
 
 /// Manages system volume and mute states using macOS CoreAudio APIs.
-final class VolumeManager: @unchecked Sendable {
-    static let shared = VolumeManager()
+public final class VolumeManager: @unchecked Sendable {
+    public static let shared = VolumeManager()
 
-    var onVolumeChanged: ((Float, Bool) -> Void)?
+    public var onVolumeChanged: (@MainActor (Float, Bool) -> Void)?
 
     private var currentDeviceID: AudioObjectID = 0
     private var volumeListenerBlock: AudioObjectPropertyListenerBlock?
     private var muteListenerBlock: AudioObjectPropertyListenerBlock?
+    private var lastDirectAdjustmentTime: TimeInterval = 0
+
+    public var lastDirectAdjustmentTimestamp: TimeInterval {
+        lastDirectAdjustmentTime
+    }
 
     private init() {
         updateDefaultDevice()
@@ -58,7 +64,9 @@ final class VolumeManager: @unchecked Sendable {
         ) { [weak self] _, _ in
             self?.updateDefaultDevice()
             if let currentVol = self?.volume, let muted = self?.isMuted {
-                self?.onVolumeChanged?(currentVol, muted)
+                MainActor.assumeIsolated {
+                    self?.onVolumeChanged?(currentVol, muted)
+                }
             }
         }
     }
@@ -77,10 +85,17 @@ final class VolumeManager: @unchecked Sendable {
 
         let volBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             guard let self = self else { return }
+            let now = CACurrentMediaTime()
+            if (now - self.lastDirectAdjustmentTime) < 0.15 {
+                // Suppress redundant echo callback from our own direct adjustment
+                return
+            }
             let vol = self.volume
             let muted = self.isMuted
             DispatchQueue.main.async {
-                self.onVolumeChanged?(vol, muted)
+                MainActor.assumeIsolated {
+                    self.onVolumeChanged?(vol, muted)
+                }
             }
         }
         self.volumeListenerBlock = volBlock
@@ -95,10 +110,17 @@ final class VolumeManager: @unchecked Sendable {
 
         let muteBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             guard let self = self else { return }
+            let now = CACurrentMediaTime()
+            if (now - self.lastDirectAdjustmentTime) < 0.15 {
+                // Suppress redundant echo callback from our own direct adjustment
+                return
+            }
             let vol = self.volume
             let muted = self.isMuted
             DispatchQueue.main.async {
-                self.onVolumeChanged?(vol, muted)
+                MainActor.assumeIsolated {
+                    self.onVolumeChanged?(vol, muted)
+                }
             }
         }
         self.muteListenerBlock = muteBlock
@@ -132,7 +154,7 @@ final class VolumeManager: @unchecked Sendable {
     // MARK: - Volume & Mute Accessors
 
     /// Current volume level from 0.0 to 1.0
-    var volume: Float {
+    public var volume: Float {
         get {
             guard currentDeviceID != 0 else { return 0.0 }
             var vol: Float32 = 0.0
@@ -144,9 +166,17 @@ final class VolumeManager: @unchecked Sendable {
             )
 
             let status = AudioObjectGetPropertyData(currentDeviceID, &address, 0, nil, &size, &vol)
-            return status == noErr ? vol : 0.0
+            if status == noErr {
+                return vol
+            }
+
+            // Fallback to kAudioDevicePropertyVolumeScalar for non-standard devices
+            address.mSelector = kAudioDevicePropertyVolumeScalar
+            let scalarStatus = AudioObjectGetPropertyData(currentDeviceID, &address, 0, nil, &size, &vol)
+            return scalarStatus == noErr ? vol : 0.0
         }
         set {
+            lastDirectAdjustmentTime = CACurrentMediaTime()
             guard currentDeviceID != 0 else { return }
             var newVol = max(0.0, min(1.0, newValue))
             let size = UInt32(MemoryLayout<Float32>.size)
@@ -156,12 +186,18 @@ final class VolumeManager: @unchecked Sendable {
                 mElement: kAudioObjectPropertyElementMain
             )
 
-            AudioObjectSetPropertyData(currentDeviceID, &address, 0, nil, size, &newVol)
+            var settable: DarwinBoolean = false
+            if AudioObjectIsPropertySettable(currentDeviceID, &address, &settable) == noErr && settable.boolValue {
+                AudioObjectSetPropertyData(currentDeviceID, &address, 0, nil, size, &newVol)
+            } else {
+                address.mSelector = kAudioDevicePropertyVolumeScalar
+                AudioObjectSetPropertyData(currentDeviceID, &address, 0, nil, size, &newVol)
+            }
         }
     }
 
     /// Whether output audio is muted
-    var isMuted: Bool {
+    public var isMuted: Bool {
         get {
             guard currentDeviceID != 0 else { return false }
             var muted: UInt32 = 0
@@ -176,6 +212,7 @@ final class VolumeManager: @unchecked Sendable {
             return status == noErr && muted == 1
         }
         set {
+            lastDirectAdjustmentTime = CACurrentMediaTime()
             guard currentDeviceID != 0 else { return }
             var mutedVal: UInt32 = newValue ? 1 : 0
             let size = UInt32(MemoryLayout<UInt32>.size)
@@ -190,20 +227,26 @@ final class VolumeManager: @unchecked Sendable {
     }
 
     /// Step volume up (by standard macOS 1/16th increment, or smaller if requested)
-    func stepUp(step: Float = 1.0 / 16.0) {
+    public func stepUp(step: Float = 1.0 / 16.0) {
+        lastDirectAdjustmentTime = CACurrentMediaTime()
         if isMuted {
             isMuted = false
         }
         volume = min(1.0, volume + step)
     }
 
-    /// Step volume down (by standard macOS 1/16th increment)
-    func stepDown(step: Float = 1.0 / 16.0) {
+    /// Step volume down (by standard macOS 1/16th increment, or smaller if requested)
+    public func stepDown(step: Float = 1.0 / 16.0) {
+        lastDirectAdjustmentTime = CACurrentMediaTime()
+        if isMuted {
+            isMuted = false
+        }
         volume = max(0.0, volume - step)
     }
 
     /// Toggle mute
-    func toggleMute() {
+    public func toggleMute() {
+        lastDirectAdjustmentTime = CACurrentMediaTime()
         isMuted.toggle()
     }
 }
