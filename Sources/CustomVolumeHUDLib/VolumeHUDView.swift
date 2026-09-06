@@ -100,6 +100,10 @@ public struct VolumeHUDView: View {
         return PixelAssetLoader.shared.image(named: name)
     }
 
+    private var cheddarImage: NSImage? {
+        PixelAssetLoader.shared.image(named: "cheddar")
+    }
+
     public var body: some View {
         ZStack {
             // Base terminal bezel & scanlines
@@ -125,6 +129,14 @@ public struct VolumeHUDView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 4)
+            }
+
+            // Rare Cheddar Cameo Layer (running along bottom)
+            if viewModel.cheddarActive, let img = cheddarImage {
+                PixelArtSpriteView(image: img, isFlippedHorizontal: false)
+                    .frame(width: 22, height: 14)
+                    .position(x: viewModel.cheddarPositionX, y: 96)
+                    .zIndex(15)
             }
 
             // Dialogue layer floating neatly in the center area above COOL slots
@@ -258,12 +270,25 @@ public struct VolumeHUDView: View {
             if let img = jakeImage {
                 PixelArtSpriteView(image: img, isFlippedHorizontal: false)
                     .frame(width: 44, height: 72)
-                    .offset(y: viewModel.jakeBounceY)
+                    .offset(x: round(viewModel.jakeLeanX), y: round(viewModel.jakeBounceY))
                     .animation(.interactiveSpring(response: 0.15, dampingFraction: 0.6), value: viewModel.jakeBounceY)
             } else {
                 Rectangle()
                     .fill(Color.blue.opacity(0.3))
                     .frame(width: 44, height: 72)
+            }
+
+            // Subtle combo indicator when combo >= 4
+            if viewModel.comboCount >= 4 {
+                PixelWordView(
+                    text: "x\(viewModel.comboCount)",
+                    pixelSize: 0.85,
+                    color: Color(red: 1.0, green: 0.85, blue: 0.3),
+                    shadowColor: Color.black,
+                    letterSpacing: 0.85
+                )
+                .offset(x: 18, y: -58)
+                .transition(.scale.combined(with: .opacity))
             }
         }
     }
@@ -274,6 +299,7 @@ public struct VolumeHUDView: View {
             if let img = holtImage {
                 PixelArtSpriteView(image: img, isFlippedHorizontal: false)
                     .frame(width: 36, height: 76)
+                    .offset(x: round(viewModel.holtEyeShift))
             } else {
                 Rectangle()
                     .fill(Color.purple.opacity(0.3))
@@ -287,14 +313,46 @@ public struct VolumeHUDView: View {
             ForEach(0..<VolumeHUDViewModel.maxSlots, id: \.self) { index in
                 volumeSlot(at: index)
             }
+            if viewModel.overflowCoolCount > 0 {
+                overflowStackSection
+            }
         }
         .padding(.vertical, 4)
+    }
+
+    private var overflowStackSection: some View {
+        ZStack {
+            ForEach(0..<viewModel.overflowCoolCount, id: \.self) { idx in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color(red: 0.95, green: 0.78, blue: 0.25).opacity(0.85))
+
+                    PixelWordView(
+                        text: "COOL",
+                        pixelSize: 0.9,
+                        color: Color(red: 0.08, green: 0.10, blue: 0.16),
+                        shadowColor: nil,
+                        letterSpacing: 0.8
+                    )
+                }
+                .frame(width: 24, height: 16)
+                .offset(
+                    x: round(viewModel.overflowOffsetsX[idx] - CGFloat(idx * 3)),
+                    y: round(viewModel.overflowJiggleY[idx])
+                )
+                .animation(.spring(response: 0.18, dampingFraction: 0.65), value: viewModel.overflowJiggleY[idx])
+            }
+        }
+        .frame(width: 28, height: 22)
+        .transition(.scale.combined(with: .opacity))
     }
 
     @ViewBuilder
     private func volumeSlot(at index: Int) -> some View {
         let isActive = index < viewModel.displayedCount
         let bounceY = viewModel.slotBounces[index]
+        let offsetX = viewModel.slotOffsetsX[index]
+        let scale = viewModel.slotScales[index]
         let slotOpacity = viewModel.slotOpacities[index]
         let effectiveOpacity = slotOpacity > 0.0 ? slotOpacity : (isActive ? 1.0 : 0.0)
 
@@ -332,8 +390,9 @@ public struct VolumeHUDView: View {
                             shadowColor: Color.black.opacity(0.8),
                             letterSpacing: Self.slotLetterSpacing
                         )
-                        .offset(y: bounceY)
+                        .offset(x: round(offsetX), y: round(bounceY))
                     }
+                    .scaleEffect(scale)
                     .opacity(effectiveOpacity)
                 }
             }

@@ -56,6 +56,11 @@ public final class HUDWindowController {
 
     private var dismissGeneration: Int = 0
 
+    public var intensityMode: IntensityMode {
+        get { viewModel?.intensityMode ?? .noice }
+        set { viewModel?.intensityMode = newValue }
+    }
+
     /// Shows or updates the HUD with current volume and mute state.
     public func show(volume: Float, isMuted: Bool) {
         if self.panel == nil || self.viewModel == nil {
@@ -73,23 +78,28 @@ public final class HUDWindowController {
         self.dismissGeneration += 1
         let generation = self.dismissGeneration
 
-        // Cancel any pending dismissal
+        // Cancel any pending dismissal hold timer
         self.dismissWorkItem?.cancel()
         self.dismissWorkItem = nil
 
-        // Cancel any in-flight fade animation and display panel immediately
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0.0
-        panel.animator().alphaValue = 1.0
-        NSAnimationContext.endGrouping()
-        panel.alphaValue = 1.0
+        // Continuous reverse fade: if currently fading out, smoothly reverse back to 1.0 without pop
+        let currentAlpha = panel.alphaValue
+        let remainingFadeIn = Double(max(0.0, 1.0 - currentAlpha))
+        let fadeInDuration = min(0.12, remainingFadeIn * 0.12)
+
         panel.orderFrontRegardless()
 
-        // Auto-dismiss after 1.8 seconds of inactivity
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = fadeInDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1.0
+        }
+
+        // Hold after last interaction (850 ms), then continuous fade-out (220 ms)
         let workItem = DispatchWorkItem { [weak self, weak panel] in
             guard let self = self, let panel = panel, self.dismissGeneration == generation else { return }
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
+                context.duration = 0.22
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 panel.animator().alphaValue = 0.0
             } completionHandler: { [weak self, weak panel] in
@@ -102,7 +112,7 @@ public final class HUDWindowController {
         }
 
         self.dismissWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: workItem)
     }
 
     /// Immediately hides the HUD panel and cancels pending auto-dismiss.

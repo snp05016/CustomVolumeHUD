@@ -455,4 +455,120 @@ final class CustomVolumeHUDTests: XCTestCase {
         XCTAssertFalse(isRepeatInitial, "Initial key press must not be identified as repeat")
         XCTAssertTrue(isRepeatHeld, "Held key press must be identified as repeat")
     }
+
+    // MARK: - Continuous Momentum & Physics Tests
+
+    func testContinuousInputVelocityDecay() {
+        let tracker = InputVelocityTracker()
+        tracker.recordEvent(direction: 1)
+        XCTAssertGreaterThan(tracker.inputIntensity, 0.0)
+
+        // Multiple rapid events scale up intensity
+        tracker.recordEvent(direction: 1)
+        tracker.recordEvent(direction: 1)
+        XCTAssertGreaterThanOrEqual(tracker.inputIntensity, 0.5)
+
+        // Ticking deltaTime decays intensity
+        let initialIntensity = tracker.inputIntensity
+        tracker.update(deltaTime: 0.15)
+        XCTAssertLessThan(tracker.inputIntensity, initialIntensity)
+
+        // Longer delay completely extinguishes intensity
+        tracker.update(deltaTime: 1.0)
+        XCTAssertEqual(tracker.inputIntensity, 0.0)
+    }
+
+    func testComboCounterIncrementAndReset() {
+        let tracker = InputVelocityTracker()
+        tracker.recordEvent(direction: 1)
+        XCTAssertEqual(tracker.comboCount, 1)
+
+        tracker.recordEvent(direction: 1)
+        XCTAssertEqual(tracker.comboCount, 2)
+
+        tracker.recordEvent(direction: 1)
+        XCTAssertEqual(tracker.comboCount, 3)
+
+        // Exceed combo timeout (350 ms)
+        tracker.update(deltaTime: 0.40)
+        XCTAssertEqual(tracker.comboCount, 0)
+    }
+
+    @MainActor
+    func testJakeExcitementContinuousInterpolation() {
+        let vm = VolumeHUDViewModel(volume: 0.2, isMuted: false)
+        XCTAssertGreaterThanOrEqual(vm.jakeExcitement, 0.0)
+
+        // Jump to 100% volume with high intensity
+        vm.velocityTracker.setInputIntensityForTesting(1.0)
+        vm.update(volume: 1.0, isMuted: false, animated: true)
+
+        // Tick display loop
+        vm.tick(explicitDeltaTime: 0.1)
+        XCTAssertGreaterThan(vm.jakeExcitement, 0.3)
+        XCTAssertGreaterThanOrEqual(vm.jakeLeanX, 0.0)
+    }
+
+    @MainActor
+    func testHoltPatienceDepletionOnSpam() {
+        let vm = VolumeHUDViewModel(volume: 1.0, isMuted: false)
+        XCTAssertEqual(vm.holtPatience, 1.0)
+
+        // Spam volume-up at 100%
+        vm.update(volume: 1.0, isMuted: false, animated: true)
+        vm.update(volume: 1.0, isMuted: false, animated: true)
+        vm.update(volume: 1.0, isMuted: false, animated: true)
+
+        XCTAssertLessThan(vm.holtPatience, 1.0, "Spamming at 100% must deplete Holt's patience")
+        XCTAssertGreaterThan(vm.overflowCoolCount, 0, "Spamming at 100% must produce overflow COOLs")
+    }
+
+    @MainActor
+    func testOverflowCoolStackingAtMaxVolume() {
+        let vm = VolumeHUDViewModel(volume: 1.0, isMuted: false)
+        XCTAssertEqual(vm.overflowCoolCount, 0)
+
+        // Trigger overflow by continuing to press Volume Up
+        vm.update(volume: 1.0, isMuted: false, animated: true)
+        XCTAssertEqual(vm.overflowCoolCount, 1)
+        XCTAssertEqual(vm.overflowOffsetsX.count, VolumeHUDViewModel.maxOverflowSlots)
+
+        vm.update(volume: 1.0, isMuted: false, animated: true)
+        XCTAssertEqual(vm.overflowCoolCount, 2)
+    }
+
+    func testEasterEggControllerCooldowns() {
+        let controller = EasterEggController()
+        XCTAssertTrue(controller.canTrigger(.bingpot))
+
+        controller.markTriggered(.bingpot)
+        XCTAssertFalse(controller.canTrigger(.bingpot), "Must be on cooldown immediately after trigger")
+
+        // Other Easter eggs remain unaffected
+        XCTAssertTrue(controller.canTrigger(.noDoubt))
+        XCTAssertTrue(controller.canTrigger(.cheddar))
+    }
+
+    @MainActor
+    func testCheddarCameoTrigger() {
+        let vm = VolumeHUDViewModel(volume: 0.5, isMuted: false)
+        XCTAssertFalse(vm.cheddarActive)
+
+        vm.triggerCheddarForTesting()
+        XCTAssertTrue(vm.cheddarActive)
+        XCTAssertEqual(vm.cheddarPositionX, 120.0)
+
+        // Ticking moves Cheddar to the right
+        vm.tick(explicitDeltaTime: 0.1)
+        XCTAssertGreaterThan(vm.cheddarPositionX, 120.0)
+    }
+
+    func testIntensityModes() {
+        XCTAssertEqual(IntensityMode.professional.maxOverflowSlots, 1)
+        XCTAssertEqual(IntensityMode.noice.maxOverflowSlots, 3)
+        XCTAssertEqual(IntensityMode.fullPeralta.maxOverflowSlots, 5)
+
+        XCTAssertLessThan(IntensityMode.professional.jakeMotionMultiplier, IntensityMode.noice.jakeMotionMultiplier)
+        XCTAssertGreaterThan(IntensityMode.fullPeralta.jakeMotionMultiplier, IntensityMode.noice.jakeMotionMultiplier)
+    }
 }
