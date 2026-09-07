@@ -930,4 +930,23 @@ final class CustomVolumeHUDTests: XCTestCase {
         renderViewToPNG(view: VolumeHUDView(viewModel: caught), filename: "hud_preview_terry_100.png")
         caught.endSession()
     }
+
+    // MARK: - Login Item Manager Tests
+
+    func testLoginItemManagerResolvedPath() {
+        let manager = LoginItemManager.shared
+        let resolved = manager.resolvedAppBundlePath()
+        XCTAssertTrue(resolved.hasSuffix(".app"), "Resolved app path must end with .app: \(resolved)")
+
+        let customOverride = "/Applications/CustomVolumeHUD.app"
+        let overridden = manager.resolvedAppBundlePath(overridePath: customOverride)
+        XCTAssertEqual(overridden, customOverride)
+    }
+
+    func testLoginItemManagerRegistrationQuery() {
+        let manager = LoginItemManager.shared
+        // Querying a non-existent item should return false and not crash
+        let nonExistent = manager.isSystemEventsLoginItemRegistered(name: "NonExistentDummyItem_XYZ_99")
+        XCTAssertFalse(nonExistent)
+    }
 }

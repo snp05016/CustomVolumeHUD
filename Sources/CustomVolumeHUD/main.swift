@@ -17,6 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupVolumeHandlers()
         requestAccessibilityAndStart()
 
+        if LoginItemManager.shared.isEnabled {
+            print("🚀 Start on login: ENABLED")
+        } else {
+            print("💡 Start on login: DISABLED (run with --enable-login or ./scripts/install.sh to enable)")
+        }
+
         print("✨ CustomVolumeHUD is running.")
         print("💡 Use your volume keys or Control Center to see the custom HUD.")
     }
@@ -85,6 +91,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct CustomVolumeHUDApp {
     @MainActor
     static func main() {
+        let arguments = CommandLine.arguments
+        if arguments.contains("--enable-login") || arguments.contains("--install-login") {
+            let success = LoginItemManager.shared.enable()
+            if success {
+                print("✅ Successfully enabled CustomVolumeHUD to start on login.")
+                exit(0)
+            } else {
+                print("❌ Failed to enable start on login.")
+                exit(1)
+            }
+        } else if arguments.contains("--disable-login") || arguments.contains("--uninstall-login") {
+            let success = LoginItemManager.shared.disable()
+            if success {
+                print("✅ Successfully disabled CustomVolumeHUD start on login.")
+                exit(0)
+            } else {
+                print("❌ Failed to disable start on login.")
+                exit(1)
+            }
+        } else if arguments.contains("--status-login") {
+            let isEnabled = LoginItemManager.shared.isEnabled
+            print(isEnabled ? "CustomVolumeHUD start-on-login: ENABLED" : "CustomVolumeHUD start-on-login: DISABLED")
+            exit(0)
+        }
+
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

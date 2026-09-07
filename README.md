@@ -68,6 +68,26 @@ Compile in Release mode and package into a signed `.app` bundle:
 open CustomVolumeHUD.app
 ```
 
+### 3. Install to `/Applications` & Start on Login
+To build, install into `/Applications/CustomVolumeHUD.app`, and automatically register it as a macOS login item:
+
+```bash
+./scripts/install.sh
+```
+
+To manage or remove login item registration at any time:
+```bash
+./scripts/install_login_item.sh    # Enable start on login
+./scripts/uninstall_login_item.sh  # Disable start on login
+```
+
+You can also control login item registration directly via the command line:
+```bash
+/Applications/CustomVolumeHUD.app/Contents/MacOS/CustomVolumeHUD --status-login
+/Applications/CustomVolumeHUD.app/Contents/MacOS/CustomVolumeHUD --enable-login
+/Applications/CustomVolumeHUD.app/Contents/MacOS/CustomVolumeHUD --disable-login
+```
+
 ### Keyboard Controls
 
 | Keys | Action |
