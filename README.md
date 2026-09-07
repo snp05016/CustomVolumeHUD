@@ -21,6 +21,7 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 - Jake returns to his standing sprite whenever he reaches the requested volume, while his feet remain anchored to the same lane used by the running frames.
 - A segmented blue-to-gold volume pill gives both scenes a precise conventional readout without replacing the character animation.
 - When the active CoreAudio output uses Bluetooth, the header shows its device name with a dedicated pixel-art earbuds or over-ear headphones sprite.
+- Fine adjustments expose all 64 native volume positions and make Jake take a tiny directional tip-toe instead of a full slot jump.
 - **Dynamic Directional Flow**: Increasing volume reveals words sequentially from Jake toward Holt with micro-delays and pixel bounces. Decreasing volume rapidly dissolves words right-to-left.
 - **Special States & Reactions**:
   - **Mute**: All COOLs vanish immediately. After 300 ms, Holt displays a subtle *"Silence."* or *"Finally."* reaction.
@@ -39,7 +40,11 @@ A custom pixel-art macOS Volume Heads-Up Display (HUD) themed around **Brooklyn 
 - ⚡ **Zero-Latency Catch-up**: Rapid keypresses collapse the animation queue (< 140 ms) so the HUD never lags behind actual volume changes.
 - 🏃 **Continuous Terry-Mode Physics**: Jake's position converges without overshoot at up to 120 updates per second, while sprite frames intentionally retain arcade-style stepping.
 - 📶 **Shared Pixel Volume Pill**: A retargetable 10-segment pill fills smoothly with the actual system volume and switches to a red empty state when muted.
-- 🎧 **Bluetooth Device Identity**: Detects the active output's CoreAudio transport and displays an AirPods/earbuds or over-ear headphones pixel badge; built-in and wired outputs stay uncluttered.
+- 🔬 **Native Fine Steps**: `Shift + Option + Volume` adjusts by `1/64`, lights 64 micro-ticks, and triggers Jake's subtle shuffle in either scene.
+- 🕹️ **Arcade Feedback**: Synthesized 8-bit pitch clicks, a maximum-volume fanfare, a mute tape-stop, and Force Touch trackpad notches provide immediate feedback without bundled sound files.
+- 🔀 **Keyboard Output Switcher**: `Option + Volume Up/Down` cycles forward or backward through live CoreAudio output devices and flashes the selected route in the HUD.
+- 🎧 **Bluetooth Device Identity**: Detects the active output's CoreAudio transport and displays a larger animated AirPods/earbuds or over-ear headphones pixel badge.
+- 🔋 **Best-Effort Battery Gauge**: Shows battery data published by compatible Bluetooth devices through IOKit; values below 15% turn red, while unsupported headsets omit the gauge rather than inventing a reading.
 - 🎬 **Session-Locked Balanced Scenes**: Scene selection happens once when the HUD appears and cannot change during input, hold, fade, or fade interruption. Each randomized pair contains one Holt and one Terry scene.
 - 🪟 **Floating & Non-Activating**: Runs as an `NSPanel` at `.statusBar` level across all spaces (including full-screen apps and games) with click-through enabled.
 - 🧼 **Invisible Background Agent**: Operates without a Dock icon or menu bar item; only the volume HUD appears.
@@ -63,6 +68,15 @@ Compile in Release mode and package into a signed `.app` bundle:
 open CustomVolumeHUD.app
 ```
 
+### Keyboard Controls
+
+| Keys | Action |
+|---|---|
+| `Volume Up / Down` | Normal `1/16` volume step |
+| `Shift + Option + Volume Up / Down` | Fine `1/64` step with micro-ticks and Jake tip-toe |
+| `Option + Volume Up / Down` | Cycle to the next / previous available output device |
+| `Mute` | Toggle mute with tape-stop and heavy haptic feedback |
+
 ---
 
 ## Permissions (Accessibility)
@@ -76,7 +90,7 @@ To suppress the default macOS volume bezel:
 
 ## Testing
 
-Run the automated test suite (48 unit, session, physics, device, and snapshot tests):
+Run the automated test suite (54 unit, session, physics, device, feedback, and snapshot tests):
 
 ```bash
 swift test
@@ -105,9 +119,12 @@ CustomVolumeHUD/
 │       ├── RunToTerryScene.swift     # Continuous run/catch physics
 │       ├── RunToTerrySceneView.swift # Terry scene renderer and sprite anchors
 │       ├── BluetoothOutputDevice.swift # Bluetooth output detection and sprite classification
+│       ├── BluetoothBatteryReader.swift # Best-effort IOKit headset battery lookup
 │       ├── BluetoothOutputBadge.swift  # Active-device pixel badge
+│       ├── AudioOutputDevice.swift     # CoreAudio output route metadata and cycling
+│       ├── ArcadeFeedbackController.swift # Runtime 8-bit synthesis and trackpad haptics
 │       ├── VolumeManager.swift       # CoreAudio volume driver & listener
 │       └── Resources/                # Transparent pixel art sprites
 └── Tests/
-    └── CustomVolumeHUDTests/         # 48 automated unit, session, physics, device, and snapshot tests
+    └── CustomVolumeHUDTests/         # 54 automated unit, session, physics, device, feedback, and snapshot tests
 ```

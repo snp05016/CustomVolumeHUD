@@ -5,15 +5,27 @@ import Cocoa
 public final class MediaKeyInterceptor: @unchecked Sendable {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var muteTogglePending = false
 
     // System-defined key type codes
     private static let NX_KEYTYPE_SOUND_UP: Int32 = 0
     private static let NX_KEYTYPE_SOUND_DOWN: Int32 = 1
     private static let NX_KEYTYPE_MUTE: Int32 = 7
 
-    public var onVolumeAdjusted: (@MainActor (Float, Bool, HUDInputAction) -> Void)?
+    public static let standardVolumeStep: Float = 1.0 / 16.0
+    public static let fineVolumeStep: Float = 1.0 / 64.0
+
+    public var onVolumeAdjusted: (@MainActor (Float, Bool, HUDInputAction, AudioOutputDevice?) -> Void)?
 
     public init() {}
+
+    public static func isFineAdjustment(shiftPressed: Bool, optionPressed: Bool) -> Bool {
+        shiftPressed && optionPressed
+    }
+
+    public static func shouldCycleOutput(shiftPressed: Bool, optionPressed: Bool) -> Bool {
+        optionPressed && !shiftPressed
+    }
 
     deinit {
         stop()
@@ -91,24 +103,66 @@ public final class MediaKeyInterceptor: @unchecked Sendable {
 
         // On key down / repeated hold, perform authoritative volume adjustment
         if keyState == 0x0A {
-            // Check for Shift + Option for 1/4 step fine tuning (1/64th of full scale)
-            let isFineTuning = event.flags.contains([.maskAlternate, .maskShift])
-            let step: Float = isFineTuning ? (1.0 / 64.0) : (1.0 / 16.0)
+            let optionPressed = event.flags.contains(.maskAlternate)
+            let shiftPressed = event.flags.contains(.maskShift)
+            let isFineTuning = Self.isFineAdjustment(
+                shiftPressed: shiftPressed,
+                optionPressed: optionPressed
+            )
+
+            // Option + Volume cycles outputs; Shift + Option retains native quarter-step behavior.
+            if Self.shouldCycleOutput(shiftPressed: shiftPressed, optionPressed: optionPressed),
+               keyCode != Self.NX_KEYTYPE_MUTE {
+                if !isRepeat {
+                    let direction = keyCode == Self.NX_KEYTYPE_SOUND_UP ? 1 : -1
+                    let outputDevice = VolumeManager.shared.cycleOutputDevice(direction: direction)
+                    notifyChange(
+                        action: direction > 0 ? .outputNext : .outputPrevious,
+                        outputDevice: outputDevice,
+                        feedbackCue: .outputSwitch
+                    )
+                }
+                return nil
+            }
+
+            let step = isFineTuning ? Self.fineVolumeStep : Self.standardVolumeStep
 
             switch keyCode {
             case Self.NX_KEYTYPE_SOUND_UP:
+                let oldVolume = VolumeManager.shared.volume
                 VolumeManager.shared.stepUp(step: step)
-                notifyChange(action: .volumeUp)
+                let newVolume = VolumeManager.shared.volume
+                let action: HUDInputAction = isFineTuning ? .fineVolumeUp : .volumeUp
+                notifyChange(
+                    action: action,
+                    feedbackCue: newVolume >= 0.999 && oldVolume < 0.999 ? .maximum : .stepUp
+                )
 
             case Self.NX_KEYTYPE_SOUND_DOWN:
                 VolumeManager.shared.stepDown(step: step)
-                notifyChange(action: .volumeDown)
+                notifyChange(
+                    action: isFineTuning ? .fineVolumeDown : .volumeDown,
+                    feedbackCue: .stepDown
+                )
 
             case Self.NX_KEYTYPE_MUTE:
                 // Only toggle mute on initial key down; do not oscillate on key repeat hold
-                if !isRepeat {
-                    VolumeManager.shared.toggleMute()
-                    notifyChange(action: .muteToggle)
+                if !isRepeat && !muteTogglePending {
+                    if VolumeManager.shared.isMuted {
+                        VolumeManager.shared.toggleMute()
+                        notifyChange(action: .muteToggle, feedbackCue: .stepUp)
+                    } else {
+                        muteTogglePending = true
+                        // Start the tape-stop while output is still audible, then close mute on its downbeat.
+                        DispatchQueue.main.async {
+                            ArcadeFeedbackController.shared.perform(cue: .mute)
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.075) { [weak self] in
+                            VolumeManager.shared.toggleMute()
+                            self?.muteTogglePending = false
+                            self?.notifyChange(action: .muteToggle, feedbackCue: nil)
+                        }
+                    }
                 }
 
             default:
@@ -120,12 +174,22 @@ public final class MediaKeyInterceptor: @unchecked Sendable {
         return nil
     }
 
-    private func notifyChange(action: HUDInputAction) {
+    private func notifyChange(
+        action: HUDInputAction,
+        outputDevice: AudioOutputDevice? = nil,
+        feedbackCue: ArcadeFeedbackCue?
+    ) {
         let vol = VolumeManager.shared.volume
         let muted = VolumeManager.shared.isMuted
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
-                self?.onVolumeAdjusted?(vol, muted, action)
+                if let feedbackCue {
+                    ArcadeFeedbackController.shared.perform(
+                        cue: feedbackCue,
+                        isFineAdjustment: action.isFineAdjustment
+                    )
+                }
+                self?.onVolumeAdjusted?(vol, muted, action, outputDevice)
             }
         }
     }

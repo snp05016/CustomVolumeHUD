@@ -11,7 +11,7 @@ public final class HUDWindowController {
     private let sceneModeProvider: () -> HUDSceneMode
 
     public nonisolated static let defaultWidth: CGFloat = 540
-    public nonisolated static let defaultHeight: CGFloat = 108
+    public nonisolated static let defaultHeight: CGFloat = 116
     public nonisolated static let originalHoldDuration: TimeInterval = 0.85
     public nonisolated static let holdDuration: TimeInterval = originalHoldDuration + 2.0
     public nonisolated static let fadeDuration: TimeInterval = 0.22
@@ -94,7 +94,8 @@ public final class HUDWindowController {
             volume: volume,
             isMuted: isMuted,
             inputAction: inputAction,
-            bluetoothOutputDevice: VolumeManager.shared.bluetoothOutputDevice
+            bluetoothOutputDevice: VolumeManager.shared.bluetoothOutputDevice,
+            outputDevice: inputAction.isOutputSwitch ? VolumeManager.shared.currentOutputDevice : nil
         )
     }
 
@@ -103,7 +104,8 @@ public final class HUDWindowController {
         volume: Float,
         isMuted: Bool,
         inputAction: HUDInputAction,
-        bluetoothOutputDevice: BluetoothOutputDevice?
+        bluetoothOutputDevice: BluetoothOutputDevice?,
+        outputDevice: AudioOutputDevice?
     ) {
         if self.panel == nil || self.viewModel == nil {
             self.setupPanel()
@@ -120,7 +122,8 @@ public final class HUDWindowController {
             volume: volume,
             isMuted: isMuted,
             inputAction: inputAction,
-            bluetoothOutputDevice: bluetoothOutputDevice
+            bluetoothOutputDevice: bluetoothOutputDevice,
+            outputDevice: outputDevice
         )
 
         // Reposition at bottom center of active display with cursor

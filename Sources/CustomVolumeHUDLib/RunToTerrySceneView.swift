@@ -49,8 +49,8 @@ struct RunToTerrySceneView: View {
                     )
                     .position(x: snappedJakeX, y: state.isMoving ? 48 : 42)
                     .offset(
-                        x: round(state.jakeLeanX),
-                        y: round(state.jakeOffsetY)
+                        x: round(state.jakeLeanX + viewModel.jakeMicroOffsetX),
+                        y: round(state.jakeOffsetY + viewModel.jakeMicroTiptoeY)
                     )
                 }
             }

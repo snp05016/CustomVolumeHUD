@@ -75,7 +75,7 @@ final class RunToTerrySceneEngine {
             minBoundaryPresses = 0
         }
 
-        if inputAction == .volumeUp && isRepeatedBoundaryPress && progress >= 0.999 && !isMuted {
+        if inputAction.isVolumeIncrease && isRepeatedBoundaryPress && progress >= 0.999 && !isMuted {
             maxBoundaryPresses += 1
             easterEggController.registerChaosEvent(amount: 0.07)
             state.catchScale = max(state.catchScale, maxBoundaryPresses.isMultiple(of: 2) ? 1.035 : 1.022)
@@ -95,7 +95,7 @@ final class RunToTerrySceneEngine {
             }
         }
 
-        if inputAction == .volumeDown && isRepeatedBoundaryPress && progress <= 0.001 && !isMuted {
+        if inputAction.isVolumeDecrease && isRepeatedBoundaryPress && progress <= 0.001 && !isMuted {
             minBoundaryPresses += 1
             easterEggController.registerChaosEvent(amount: 0.05)
             state.jakeSpeech = minBoundaryPresses >= 3 ? "STILL ZERO!" : "CAN'T GO LOWER!"

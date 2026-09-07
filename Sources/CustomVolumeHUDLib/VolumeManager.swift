@@ -13,6 +13,7 @@ public final class VolumeManager: @unchecked Sendable {
     private var volumeListenerBlock: AudioObjectPropertyListenerBlock?
     private var muteListenerBlock: AudioObjectPropertyListenerBlock?
     private var lastDirectAdjustmentTime: TimeInterval = 0
+    private var batteryCache: (deviceName: String, percentage: Int?, timestamp: TimeInterval)?
 
     public var lastDirectAdjustmentTimestamp: TimeInterval {
         lastDirectAdjustmentTime
@@ -20,49 +21,69 @@ public final class VolumeManager: @unchecked Sendable {
 
     /// Metadata for the active output when CoreAudio reports a Bluetooth transport.
     public var bluetoothOutputDevice: BluetoothOutputDevice? {
-        guard currentDeviceID != 0 else { return nil }
+        guard let device = currentOutputDevice, device.isBluetooth else { return nil }
+        return BluetoothOutputDevice(
+            name: device.name,
+            batteryPercentage: cachedBatteryPercentage(for: device.name)
+        )
+    }
 
-        var transportType: UInt32 = 0
-        var transportSize = UInt32(MemoryLayout<UInt32>.size)
-        var transportAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyTransportType,
+    public var currentOutputDevice: AudioOutputDevice? {
+        guard currentDeviceID != 0 else { return nil }
+        return outputDevice(for: currentDeviceID)
+    }
+
+    public var availableOutputDevices: [AudioOutputDevice] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        let transportStatus = AudioObjectGetPropertyData(
-            currentDeviceID,
-            &transportAddress,
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
             0,
             nil,
-            &transportSize,
-            &transportType
-        )
-        guard transportStatus == noErr,
-              transportType == kAudioDeviceTransportTypeBluetooth ||
-                transportType == kAudioDeviceTransportTypeBluetoothLE else {
-            return nil
+            &dataSize
+        ) == noErr else { return [] }
+
+        let count = Int(dataSize) / MemoryLayout<AudioObjectID>.size
+        guard count > 0 else { return [] }
+        var deviceIDs = [AudioObjectID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &deviceIDs
+        ) == noErr else { return [] }
+
+        return deviceIDs
+            .filter { isAliveOutputDevice($0) }
+            .compactMap(outputDevice(for:))
+    }
+
+    /// Cycles the macOS default output and also updates the system-sound output when possible.
+    @discardableResult
+    public func cycleOutputDevice(direction: Int) -> AudioOutputDevice? {
+        let devices = availableOutputDevices
+        guard devices.count > 1,
+              let currentIndex = devices.firstIndex(where: { $0.id == currentDeviceID }),
+              let nextIndex = AudioOutputDevice.cycledIndex(
+                currentIndex: currentIndex,
+                count: devices.count,
+                direction: direction
+              ) else {
+            return currentOutputDevice
         }
 
-        var unmanagedName: Unmanaged<CFString>?
-        var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        var nameAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioObjectPropertyName,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let nameStatus = AudioObjectGetPropertyData(
-            currentDeviceID,
-            &nameAddress,
-            0,
-            nil,
-            &nameSize,
-            &unmanagedName
-        )
-        let name = nameStatus == noErr
-            ? unmanagedName?.takeRetainedValue() as String?
-            : nil
-
-        return BluetoothOutputDevice(name: name ?? "Bluetooth Audio")
+        let nextDevice = devices[nextIndex]
+        guard setDefaultOutputDevice(AudioObjectID(nextDevice.id)) else { return currentOutputDevice }
+        updateDefaultDevice()
+        batteryCache = nil
+        return currentOutputDevice ?? nextDevice
     }
 
     private init() {
@@ -93,8 +114,124 @@ public final class VolumeManager: @unchecked Sendable {
         if status == noErr && deviceID != 0 {
             removeListeners()
             self.currentDeviceID = deviceID
+            self.batteryCache = nil
             setupPropertyListeners()
         }
+    }
+
+    private func outputDevice(for deviceID: AudioObjectID) -> AudioOutputDevice? {
+        guard let name = deviceName(for: deviceID), let transport = transportType(for: deviceID) else {
+            return nil
+        }
+        return AudioOutputDevice(id: UInt32(deviceID), name: name, transportType: transport)
+    }
+
+    private func deviceName(for deviceID: AudioObjectID) -> String? {
+        var unmanagedName: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &unmanagedName) == noErr else {
+            return nil
+        }
+        return unmanagedName?.takeRetainedValue() as String?
+    }
+
+    private func transportType(for deviceID: AudioObjectID) -> UInt32? {
+        var transportType: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transportType) == noErr else {
+            return nil
+        }
+        return transportType
+    }
+
+    private func isAliveOutputDevice(_ deviceID: AudioObjectID) -> Bool {
+        var isAlive: UInt32 = 1
+        var aliveSize = UInt32(MemoryLayout<UInt32>.size)
+        var aliveAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsAlive,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectGetPropertyData(deviceID, &aliveAddress, 0, nil, &aliveSize, &isAlive) == noErr,
+           isAlive == 0 {
+            return false
+        }
+
+        var streamAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var streamSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &streamSize) == noErr,
+              streamSize >= MemoryLayout<AudioBufferList>.size else {
+            return false
+        }
+
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(streamSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { storage.deallocate() }
+        let bufferList = storage.bindMemory(to: AudioBufferList.self, capacity: 1)
+        guard AudioObjectGetPropertyData(deviceID, &streamAddress, 0, nil, &streamSize, bufferList) == noErr else {
+            return false
+        }
+        return UnsafeMutableAudioBufferListPointer(bufferList).contains { $0.mNumberChannels > 0 }
+    }
+
+    private func setDefaultOutputDevice(_ deviceID: AudioObjectID) -> Bool {
+        var mutableDeviceID = deviceID
+        let size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var outputAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let outputStatus = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &outputAddress,
+            0,
+            nil,
+            size,
+            &mutableDeviceID
+        )
+        guard outputStatus == noErr else { return false }
+
+        var systemAddress = outputAddress
+        systemAddress.mSelector = kAudioHardwarePropertyDefaultSystemOutputDevice
+        _ = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &systemAddress,
+            0,
+            nil,
+            size,
+            &mutableDeviceID
+        )
+        return true
+    }
+
+    private func cachedBatteryPercentage(for deviceName: String) -> Int? {
+        let now = CACurrentMediaTime()
+        if let batteryCache,
+           batteryCache.deviceName == deviceName,
+           now - batteryCache.timestamp < 30 {
+            return batteryCache.percentage
+        }
+
+        let percentage = BluetoothBatteryReader.percentage(forDeviceNamed: deviceName)
+        batteryCache = (deviceName, percentage, now)
+        return percentage
     }
 
     private func setupDeviceChangeListener() {

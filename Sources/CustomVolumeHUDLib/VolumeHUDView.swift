@@ -71,7 +71,7 @@ public struct VolumeHUDView: View {
     @ObservedObject public var viewModel: VolumeHUDViewModel
 
     public static let hudWidth: CGFloat = 540
-    public static let hudHeight: CGFloat = 108
+    public static let hudHeight: CGFloat = 116
     public static let slotWidth: CGFloat = 34
     public static let slotHeight: CGFloat = 22
     public static let slotPixelSize: CGFloat = 1.25
@@ -91,10 +91,11 @@ public struct VolumeHUDView: View {
 
             PixelVolumePill(
                 progress: Double(viewModel.volume),
-                isMuted: viewModel.isMuted
+                isMuted: viewModel.isMuted,
+                isFineAdjustment: viewModel.isFineAdjustment
             )
             .frame(width: 504, height: 8)
-            .position(x: Self.hudWidth / 2, y: 101)
+            .position(x: Self.hudWidth / 2, y: Self.hudHeight - 7)
             .zIndex(1)
 
             VStack(spacing: 1) {
@@ -156,29 +157,43 @@ public struct VolumeHUDView: View {
                 .foregroundColor(Color(red: 0.95, green: 0.75, blue: 0.25))
 
             PixelWordView(
-                text: "NYPD // 99TH PRECINCT",
+                text: "NYPD // 99TH",
                 pixelSize: 0.85,
                 color: Color(red: 0.95, green: 0.75, blue: 0.25),
                 shadowColor: .black,
                 letterSpacing: 0.85
             )
+            .layoutPriority(2)
 
-            Spacer()
+            Spacer(minLength: 6)
 
-            PixelWordView(
-                text: viewModel.currentSceneMode == .coolHolt ? "COOL CONTROL" : "JAKE IN PURSUIT",
-                pixelSize: 0.85,
-                color: Color(red: 0.47, green: 0.69, blue: 0.91),
-                shadowColor: .black,
-                letterSpacing: 0.85
-            )
-
-            Spacer()
+            if !hasDeviceBadge {
+                PixelWordView(
+                    text: viewModel.currentSceneMode == .coolHolt ? "COOL CONTROL" : "JAKE IN PURSUIT",
+                    pixelSize: 0.85,
+                    color: Color(red: 0.47, green: 0.69, blue: 0.91),
+                    shadowColor: .black,
+                    letterSpacing: 0.85
+                )
+                Spacer(minLength: 6)
+            }
 
             if let bluetoothDevice = viewModel.bluetoothOutputDevice {
-                BluetoothOutputBadge(device: bluetoothDevice)
+                BluetoothOutputBadge(
+                    device: bluetoothDevice,
+                    motionToken: viewModel.deviceIconMotionToken,
+                    motionDirection: viewModel.deviceIconMotionDirection,
+                    isOutputSwitch: viewModel.outputSwitchDevice?.isBluetooth == true
+                )
+                .layoutPriority(1)
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else if let outputDevice = viewModel.outputSwitchDevice {
+                OutputSwitchBadge(device: outputDevice)
+                    .layoutPriority(1)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
+
+            Spacer(minLength: 6)
 
             PixelWordView(
                 text: viewModel.isMuted ? "[ MUTED ]" : "LEVEL: \(Int(round(viewModel.volume * 100)))%",
@@ -189,10 +204,15 @@ public struct VolumeHUDView: View {
                 shadowColor: .black,
                 letterSpacing: 0.85
             )
+            .layoutPriority(2)
         }
         .padding(.horizontal, 14)
         .padding(.top, 6)
         .animation(.easeOut(duration: 0.16), value: viewModel.bluetoothOutputDevice)
+    }
+
+    private var hasDeviceBadge: Bool {
+        viewModel.bluetoothOutputDevice != nil || viewModel.outputSwitchDevice != nil
     }
 
     private var terminalBackground: some View {

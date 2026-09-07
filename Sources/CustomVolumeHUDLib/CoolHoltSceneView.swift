@@ -39,7 +39,10 @@ struct CoolHoltSceneView: View {
             if let jakeImage {
                 PixelArtSpriteView(image: jakeImage)
                     .frame(width: 44, height: 72)
-                    .offset(x: round(viewModel.jakeLeanX), y: round(viewModel.jakeBounceY))
+                    .offset(
+                        x: round(viewModel.jakeLeanX + viewModel.jakeMicroOffsetX),
+                        y: round(viewModel.jakeBounceY + viewModel.jakeMicroTiptoeY)
+                    )
             }
 
             if viewModel.comboCount >= 4 {

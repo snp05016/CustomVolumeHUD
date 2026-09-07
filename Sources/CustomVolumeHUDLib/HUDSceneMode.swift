@@ -38,16 +38,36 @@ public enum HUDInputAction: Equatable, Sendable {
     case inferred
     case volumeUp
     case volumeDown
+    case fineVolumeUp
+    case fineVolumeDown
     case muteToggle
+    case outputNext
+    case outputPrevious
     case externalChange
 
     var explicitDirection: Int? {
         switch self {
-        case .volumeUp: return 1
-        case .volumeDown: return -1
+        case .volumeUp, .fineVolumeUp, .outputNext: return 1
+        case .volumeDown, .fineVolumeDown, .outputPrevious: return -1
         case .muteToggle: return 0
         case .inferred, .externalChange: return nil
         }
+    }
+
+    var isVolumeIncrease: Bool {
+        self == .volumeUp || self == .fineVolumeUp
+    }
+
+    var isVolumeDecrease: Bool {
+        self == .volumeDown || self == .fineVolumeDown
+    }
+
+    public var isFineAdjustment: Bool {
+        self == .fineVolumeUp || self == .fineVolumeDown
+    }
+
+    public var isOutputSwitch: Bool {
+        self == .outputNext || self == .outputPrevious
     }
 }
 

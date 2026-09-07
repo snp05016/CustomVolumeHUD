@@ -16,11 +16,13 @@ public enum BluetoothDeviceKind: String, Equatable, Sendable {
 public struct BluetoothOutputDevice: Equatable, Sendable {
     public let name: String
     public let kind: BluetoothDeviceKind
+    public let batteryPercentage: Int?
 
-    public init(name: String) {
+    public init(name: String, batteryPercentage: Int? = nil) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.name = trimmedName.isEmpty ? "Bluetooth Audio" : trimmedName
         self.kind = Self.classify(name: self.name)
+        self.batteryPercentage = batteryPercentage.map { min(100, max(0, $0)) }
     }
 
     public var assetName: String { kind.assetName }
@@ -61,7 +63,7 @@ public struct BluetoothOutputDevice: Equatable, Sendable {
         return .headphones
     }
 
-    private static func normalized(_ name: String) -> String {
+    static func normalized(_ name: String) -> String {
         let folded = name
             .folding(options: [.diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .uppercased()

@@ -16,6 +16,12 @@ public final class VolumeHUDViewModel: ObservableObject {
     @Published public private(set) var runToTerryState = RunToTerryRenderState()
     @Published public private(set) var hudPulseScale: CGFloat = 1.0
     @Published public private(set) var bluetoothOutputDevice: BluetoothOutputDevice?
+    @Published public private(set) var outputSwitchDevice: AudioOutputDevice?
+    @Published public private(set) var isFineAdjustment: Bool = false
+    @Published public private(set) var jakeMicroOffsetX: CGFloat = 0
+    @Published public private(set) var jakeMicroTiptoeY: CGFloat = 0
+    @Published public private(set) var deviceIconMotionToken: Int = 0
+    @Published public private(set) var deviceIconMotionDirection: Int = 1
 
     // Physical COOL Slot Arrays (10 slots)
     @Published public private(set) var slotBounces: [CGFloat] = Array(repeating: 0, count: maxSlots)
@@ -145,6 +151,10 @@ public final class VolumeHUDViewModel: ObservableObject {
         holtSpeech = nil
         overflowCoolCount = 0
         cheddarActive = false
+        outputSwitchDevice = nil
+        isFineAdjustment = false
+        jakeMicroOffsetX = 0
+        jakeMicroTiptoeY = 0
     }
 
     private func noteSessionInput() {
@@ -284,7 +294,8 @@ public final class VolumeHUDViewModel: ObservableObject {
         isMuted: Bool,
         animated: Bool = true,
         inputAction: HUDInputAction = .inferred,
-        bluetoothOutputDevice: BluetoothOutputDevice?
+        bluetoothOutputDevice: BluetoothOutputDevice?,
+        outputDevice: AudioOutputDevice? = nil
     ) {
         let newVolume = max(0.0, min(1.0, volume))
         let oldVolume = self.volume
@@ -293,14 +304,26 @@ public final class VolumeHUDViewModel: ObservableObject {
         self.volume = newVolume
         self.isMuted = isMuted
         self.bluetoothOutputDevice = bluetoothOutputDevice
+        self.isFineAdjustment = inputAction.isFineAdjustment
+
+        if inputAction.isOutputSwitch {
+            self.outputSwitchDevice = outputDevice
+        }
+        if bluetoothOutputDevice != nil {
+            deviceIconMotionToken &+= 1
+            deviceIconMotionDirection = inputAction.explicitDirection ?? inferredDirectionForMotion(
+                newVolume: newVolume,
+                oldVolume: oldVolume
+            )
+        }
 
         let target = self.targetSlotCount
         let inferredDirection = newVolume > oldVolume ? 1 : (newVolume < oldVolume ? -1 : 0)
-        let direction = inputAction.explicitDirection ?? inferredDirection
+        let direction = inputAction.isOutputSwitch ? 0 : (inputAction.explicitDirection ?? inferredDirection)
         let isRepeatedMaxPress = newVolume >= 0.999 && oldVolume >= 0.999 &&
-            (inputAction == .volumeUp || inputAction == .inferred)
+            (inputAction.isVolumeIncrease || inputAction == .inferred)
         let isRepeatedMinPress = newVolume <= 0.001 && oldVolume <= 0.001 &&
-            (inputAction == .volumeDown || inputAction == .inferred)
+            (inputAction.isVolumeDecrease || inputAction == .inferred)
 
         // Record velocity event
         velocityTracker.recordEvent(direction: direction)
@@ -316,6 +339,10 @@ public final class VolumeHUDViewModel: ObservableObject {
         cancelPendingAnimations()
         let animId = UUID()
         self.activeAnimationId = animId
+
+        if inputAction.isFineAdjustment {
+            triggerJakeMicroStep(direction: direction, animId: animId)
+        }
 
         runToTerryEngine.updateTarget(
             volume: newVolume,
@@ -376,7 +403,7 @@ public final class VolumeHUDViewModel: ObservableObject {
         }
 
         // CASE 7: Target unchanged
-        if target == 10 {
+        if target == 10 && !inputAction.isOutputSwitch {
             triggerJakeCelebration(atMax: true)
         }
     }
@@ -393,11 +420,38 @@ public final class VolumeHUDViewModel: ObservableObject {
             isMuted: isMuted,
             animated: animated,
             inputAction: inputAction,
-            bluetoothOutputDevice: bluetoothOutputDevice
+            bluetoothOutputDevice: bluetoothOutputDevice,
+            outputDevice: nil
         )
     }
 
     // MARK: - State Handlers
+
+    private func inferredDirectionForMotion(newVolume: Float, oldVolume: Float) -> Int {
+        if newVolume > oldVolume { return 1 }
+        if newVolume < oldVolume { return -1 }
+        return 1
+    }
+
+    private func triggerJakeMicroStep(direction: Int, animId: UUID) {
+        let signedDirection: CGFloat = direction < 0 ? -1 : 1
+        jakeMicroOffsetX = signedDirection * 2
+        jakeMicroTiptoeY = -2
+
+        let shuffleBack = DispatchWorkItem { [weak self] in
+            guard let self, self.activeAnimationId == animId else { return }
+            self.jakeMicroOffsetX = -signedDirection
+            self.jakeMicroTiptoeY = -1
+        }
+        let settle = DispatchWorkItem { [weak self] in
+            guard let self, self.activeAnimationId == animId else { return }
+            self.jakeMicroOffsetX = 0
+            self.jakeMicroTiptoeY = 0
+        }
+        pendingWorkItems.append(contentsOf: [shuffleBack, settle])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.055, execute: shuffleBack)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.13, execute: settle)
+    }
 
     private func handleMinVolumeBoundary() {
         easterEggController.registerChaosEvent(amount: 0.05)
@@ -737,6 +791,8 @@ public final class VolumeHUDViewModel: ObservableObject {
             }
         }
         self.jakeBounceY = 0.0
+        self.jakeMicroOffsetX = 0
+        self.jakeMicroTiptoeY = 0
     }
 
     #if DEBUG

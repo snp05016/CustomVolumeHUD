@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import CoreAudio
 @testable import CustomVolumeHUDLib
 
 final class CustomVolumeHUDTests: XCTestCase {
@@ -215,9 +216,10 @@ final class CustomVolumeHUDTests: XCTestCase {
     }
 
     func testBluetoothDeviceClassificationAndAssets() {
-        let airPods = BluetoothOutputDevice(name: "Saumya's AirPods Pro")
+        let airPods = BluetoothOutputDevice(name: "Saumya's AirPods Pro", batteryPercentage: 84)
         XCTAssertEqual(airPods.kind, .earbuds)
         XCTAssertEqual(airPods.displayName, "AIRPODS PRO")
+        XCTAssertEqual(airPods.batteryPercentage, 84)
 
         let headphones = BluetoothOutputDevice(name: "WH-1000XM5")
         XCTAssertEqual(headphones.kind, .headphones)
@@ -229,7 +231,7 @@ final class CustomVolumeHUDTests: XCTestCase {
 
     @MainActor
     func testBluetoothOutputUpdatesAndRendersInHUD() {
-        let airPods = BluetoothOutputDevice(name: "Saumya's AirPods Pro")
+        let airPods = BluetoothOutputDevice(name: "Saumya's AirPods Pro", batteryPercentage: 84)
         let vm = VolumeHUDViewModel(
             volume: 0.7,
             isMuted: false,
@@ -246,7 +248,7 @@ final class CustomVolumeHUDTests: XCTestCase {
         let headphonesVM = VolumeHUDViewModel(
             volume: 0.65,
             isMuted: false,
-            bluetoothOutputDevice: BluetoothOutputDevice(name: "WH-1000XM5")
+            bluetoothOutputDevice: BluetoothOutputDevice(name: "WH-1000XM5", batteryPercentage: 12)
         )
         headphonesVM.beginSession(sceneMode: .runToTerry)
         headphonesVM.update(volume: 0.65, isMuted: false, animated: false)
@@ -259,6 +261,112 @@ final class CustomVolumeHUDTests: XCTestCase {
         vm.update(volume: 0.6, isMuted: false, animated: false, bluetoothOutputDevice: nil)
         XCTAssertNil(vm.bluetoothOutputDevice)
         vm.endSession()
+    }
+
+    func testModifierRoutingKeepsFineStepsDistinctFromOutputCycling() {
+        XCTAssertTrue(MediaKeyInterceptor.isFineAdjustment(shiftPressed: true, optionPressed: true))
+        XCTAssertFalse(MediaKeyInterceptor.shouldCycleOutput(shiftPressed: true, optionPressed: true))
+        XCTAssertTrue(MediaKeyInterceptor.shouldCycleOutput(shiftPressed: false, optionPressed: true))
+        XCTAssertFalse(MediaKeyInterceptor.shouldCycleOutput(shiftPressed: true, optionPressed: false))
+        XCTAssertEqual(
+            MediaKeyInterceptor.fineVolumeStep,
+            MediaKeyInterceptor.standardVolumeStep / 4,
+            accuracy: 0.000_001
+        )
+    }
+
+    func testAudioOutputCyclingWrapsInBothDirections() {
+        XCTAssertEqual(AudioOutputDevice.cycledIndex(currentIndex: 2, count: 3, direction: 1), 0)
+        XCTAssertEqual(AudioOutputDevice.cycledIndex(currentIndex: 0, count: 3, direction: -1), 2)
+        XCTAssertEqual(AudioOutputDevice.cycledIndex(currentIndex: 1, count: 3, direction: 1), 2)
+        XCTAssertNil(AudioOutputDevice.cycledIndex(currentIndex: 0, count: 0, direction: 1))
+    }
+
+    func testChiptuneWaveformsAreFiniteNonSilentAndCueSpecific() {
+        let up = ChiptuneSynthesizer.samples(for: .stepUp)
+        let down = ChiptuneSynthesizer.samples(for: .stepDown)
+        let fanfare = ChiptuneSynthesizer.samples(for: .maximum)
+        let mute = ChiptuneSynthesizer.samples(for: .mute)
+
+        for samples in [up, down, fanfare, mute] {
+            XCTAssertFalse(samples.isEmpty)
+            XCTAssertTrue(samples.allSatisfy(\.isFinite))
+            XCTAssertTrue(samples.contains { abs($0) > 0.001 })
+            XCTAssertLessThanOrEqual(samples.map { abs($0) }.max() ?? 0, 1)
+        }
+        XCTAssertNotEqual(up, down)
+        XCTAssertGreaterThan(fanfare.count, up.count)
+        XCTAssertGreaterThan(mute.count, down.count)
+    }
+
+    func testBatteryExtractionSupportsSingleAndSplitEarbuds() {
+        XCTAssertEqual(
+            BluetoothBatteryReader.percentage(in: ["BatteryPercent": 84]),
+            84
+        )
+        XCTAssertEqual(
+            BluetoothBatteryReader.percentage(in: [
+                "Product": "AirPods Pro",
+                "Battery": [
+                    "BatteryPercentLeft": 0.84,
+                    "BatteryPercentRight": 72,
+                    "BatteryPercentCase": 5
+                ]
+            ]),
+            72
+        )
+        XCTAssertNil(BluetoothBatteryReader.percentage(in: ["Unrelated": 50]))
+        XCTAssertEqual(BluetoothOutputDevice(name: "AirPods", batteryPercentage: 140).batteryPercentage, 100)
+    }
+
+    @MainActor
+    func testFineAdjustmentTriggersJakeMicroShuffle() {
+        let vm = VolumeHUDViewModel(volume: 0.5, isMuted: false)
+        vm.beginSession(sceneMode: .coolHolt)
+        vm.update(
+            volume: 0.5 + MediaKeyInterceptor.fineVolumeStep,
+            isMuted: false,
+            inputAction: .fineVolumeUp
+        )
+
+        XCTAssertTrue(vm.isFineAdjustment)
+        XCTAssertGreaterThan(vm.jakeMicroOffsetX, 0)
+        XCTAssertLessThan(vm.jakeMicroTiptoeY, 0)
+        renderViewToPNG(view: VolumeHUDView(viewModel: vm), filename: "hud_preview_fine_51.png")
+        vm.endSession()
+    }
+
+    @MainActor
+    func testOutputSwitchAnnouncementSurvivesCoreAudioEcho() {
+        let studioDisplay = AudioOutputDevice(
+            id: 42,
+            name: "Studio Display",
+            transportType: kAudioDeviceTransportTypeDisplayPort
+        )
+        let vm = VolumeHUDViewModel(volume: 0.5, isMuted: false)
+        vm.beginSession(sceneMode: .runToTerry)
+        vm.update(
+            volume: 0.5,
+            isMuted: false,
+            inputAction: .outputNext,
+            bluetoothOutputDevice: nil,
+            outputDevice: studioDisplay
+        )
+        XCTAssertEqual(vm.outputSwitchDevice, studioDisplay)
+        renderViewToPNG(
+            view: VolumeHUDView(viewModel: vm),
+            filename: "hud_preview_output_switch.png"
+        )
+
+        vm.update(
+            volume: 0.5,
+            isMuted: false,
+            inputAction: .externalChange,
+            bluetoothOutputDevice: nil
+        )
+        XCTAssertEqual(vm.outputSwitchDevice, studioDisplay)
+        vm.endSession()
+        XCTAssertNil(vm.outputSwitchDevice)
     }
 
     // MARK: - HUD Layout Dimensions & Visual Snapshot Tests
