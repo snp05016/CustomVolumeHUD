@@ -247,11 +247,11 @@ public final class VolumeManager: @unchecked Sendable {
             DispatchQueue.main
         ) { [weak self] _, _ in
             self?.updateDefaultDevice()
-            if let currentVol = self?.volume, let muted = self?.isMuted {
-                MainActor.assumeIsolated {
-                    self?.onVolumeChanged?(currentVol, muted)
-                }
-            }
+            // A route change is not a user volume action. Presenting here races the
+            // dedicated DeviceArrivalHUD and makes the B99 volume HUD appear first
+            // when AirPods connect. Property listeners still report genuine volume
+            // and mute changes, while Option+Volume output switching is presented by
+            // MediaKeyInterceptor with explicit output metadata.
         }
     }
 

@@ -64,8 +64,8 @@ public final class PixelAssetLoader: @unchecked Sendable {
 
         // 5. Development filesystem fallback
         let devPaths = [
-            "/Users/saumya/CustomVolumeHUD/Sources/CustomVolumeHUDLib/Resources/\(filename)",
-            "/Users/saumya/CustomVolumeHUD/Sources/CustomVolumeHUD/Resources/\(filename)",
+            "/Users/saumya/MacDev/CustomVolumeHUD/Sources/CustomVolumeHUDLib/Resources/\(filename)",
+            "/Users/saumya/MacDev/CustomVolumeHUD/Sources/CustomVolumeHUD/Resources/\(filename)",
             "./Sources/CustomVolumeHUDLib/Resources/\(filename)",
             "./Sources/CustomVolumeHUD/Resources/\(filename)"
         ]
